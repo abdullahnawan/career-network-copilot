@@ -6,11 +6,11 @@ collaboration. It will rank manually supplied and permitted-source contacts,
 explain recommendations, draft evidence-based outreach, and track outreach
 progress. It will never scrape LinkedIn or send messages automatically.
 
-## Phase 2 status
+## Phase 3 status
 
-Phase 2 adds PostgreSQL/pgvector connection configuration, SQLAlchemy models,
-Alembic migrations, and an unauthenticated student profile API. Later phases
-will add authentication, matching, integrations, and outreach flows.
+Phase 3 adds a responsive student onboarding and profile-management frontend
+connected to the unauthenticated student profile API. Later phases will add
+authentication, matching, integrations, and outreach flows.
 
 ## Architecture
 
@@ -63,10 +63,11 @@ python -m pip install -e "backend[dev]"
 
 Set-Location frontend
 npm install
+Set-Content .env.local "NEXT_PUBLIC_API_URL=http://127.0.0.1:8000"
 Set-Location ..
 ```
 
-Run the backend:
+Run the backend in a PowerShell window:
 
 ```powershell
 .\backend\.venv\Scripts\Activate.ps1
@@ -79,6 +80,10 @@ Run the frontend in a second PowerShell window:
 Set-Location frontend
 npm run dev
 ```
+
+The frontend reads `NEXT_PUBLIC_API_URL` from `frontend/.env.local` and uses
+`http://127.0.0.1:8000` by default. The backend allows local development
+origins at `http://localhost:3000` and `http://127.0.0.1:3000`.
 
 The backend health endpoint is `http://localhost:8000/health`.
 Interactive API documentation will be at `http://localhost:8000/docs` once the
@@ -110,6 +115,8 @@ Set-Location frontend
 npm run lint
 npm run typecheck
 npm run test
+npm run build
+npm audit
 Set-Location ..
 ```
 
@@ -135,6 +142,6 @@ API data will be minimized and attributed.
 
 ## Known limitations and future improvements
 
-Phase 2 does not include authentication, contact management, matching,
+Phase 3 does not include authentication, contact management, matching,
 GitHub/CSV integrations, message generation, outreach tracking, seed data, or
 end-to-end journeys. Those are planned for later phases.
