@@ -6,7 +6,7 @@ import { FormField } from "../components/FormField";
 import { Layout } from "../components/Layout";
 import { SkillEditor } from "../components/SkillEditor";
 import { StatusMessage } from "../components/StatusMessage";
-import { CareerGoal, GoalInput, ProfileFields, profileApi, SkillInput, StudentProfile } from "../lib/api";
+import { CareerGoal, formatApiError, GoalInput, ProfileFields, profileApi, SkillInput, StudentProfile } from "../lib/api";
 
 type GoalDraft = GoalInput & { id?: number };
 
@@ -79,7 +79,7 @@ export default function HomePage() {
       applyProfile(profile);
       setStatus({ kind: "success", message: "Profile loaded. You can edit it below." });
     } catch (error) {
-      setStatus({ kind: "error", message: error instanceof Error ? error.message : "Unable to load profile." });
+      setStatus({ kind: "error", message: formatApiError(error, "Unable to load profile.") });
     } finally {
       setLoading(false);
     }
@@ -137,7 +137,7 @@ export default function HomePage() {
       applyProfile(saved);
       setStatus({ kind: "success", message: `Profile saved. Your profile ID is ${saved.id}.` });
     } catch (error) {
-      setStatus({ kind: "error", message: error instanceof Error ? error.message : "Unable to save profile." });
+      setStatus({ kind: "error", message: formatApiError(error, "Unable to save profile.") });
     } finally {
       setLoading(false);
     }

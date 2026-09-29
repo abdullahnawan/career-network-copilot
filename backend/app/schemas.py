@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -107,3 +108,92 @@ class StudentProfileResponse(StudentProfileBase):
     updated_at: datetime
     career_goals: list[CareerGoalResponse] = Field(default_factory=list)
     skills: list[StudentSkillResponse] = Field(default_factory=list)
+
+
+SourceType = Literal["manual", "csv"]
+
+
+class ContactBase(BaseModel):
+    full_name: str = Field(min_length=1, max_length=160)
+    current_role: str | None = Field(default=None, max_length=160)
+    company: str | None = Field(default=None, max_length=160)
+    industry: str | None = Field(default=None, max_length=160)
+    location: str | None = Field(default=None, max_length=160)
+    school: str | None = Field(default=None, max_length=160)
+    skills_summary: str | None = Field(default=None, max_length=3000)
+    profile_url: str | None = Field(default=None, max_length=500)
+    source_type: SourceType
+    source_name: str = Field(min_length=1, max_length=160)
+    notes: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("full_name", "source_name")
+    @classmethod
+    def required_text_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("profile_url")
+    @classmethod
+    def reference_url_only(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith(("http://", "https://")):
+            raise ValueError("profile_url must be an http or https reference")
+        return value
+
+
+class ContactCreate(ContactBase):
+    pass
+
+
+class ContactUpdate(BaseModel):
+    full_name: str | None = Field(default=None, min_length=1, max_length=160)
+    current_role: str | None = Field(default=None, max_length=160)
+    company: str | None = Field(default=None, max_length=160)
+    industry: str | None = Field(default=None, max_length=160)
+    location: str | None = Field(default=None, max_length=160)
+    school: str | None = Field(default=None, max_length=160)
+    skills_summary: str | None = Field(default=None, max_length=3000)
+    profile_url: str | None = Field(default=None, max_length=500)
+    source_name: str | None = Field(default=None, min_length=1, max_length=160)
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class ContactResponse(ContactBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContactPage(BaseModel):
+    items: list[ContactResponse]
+    page: int
+    page_size: int
+    total: int
+
+
+class CsvImportError(BaseModel):
+    row: int
+    message: str
+
+
+class CsvImportSummary(BaseModel):
+    created: int
+    errors: list[CsvImportError]
+
+
+class MatchBreakdown(BaseModel):
+    role: float
+    industry: float
+    location: float
+    school: float
+    skills: float
+
+
+class ContactMatch(BaseModel):
+    contact: ContactResponse
+    total_score: float
+    breakdown: MatchBreakdown
+    reasons: list[str]

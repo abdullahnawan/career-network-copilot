@@ -8,7 +8,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/" className="text-lg font-semibold tracking-tight text-white">
             Career Network <span className="text-cyan-300">Copilot</span>
           </Link>
-          <span className="hidden text-sm text-slate-400 sm:block">Student workspace</span>
+          <nav className="flex gap-4 text-sm text-slate-300" aria-label="Primary navigation">
+            <Link href="/" className="hover:text-cyan-200">Profile</Link>
+            <Link href="/contacts" className="hover:text-cyan-200">Contacts</Link>
+            <Link href="/matches" className="hover:text-cyan-200">Matches</Link>
+          </nav>
         </div>
       </header>
       <div className="mx-auto max-w-6xl px-5 py-10">{children}</div>
