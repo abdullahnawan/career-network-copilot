@@ -6,11 +6,11 @@ collaboration. It will rank manually supplied and permitted-source contacts,
 explain recommendations, draft evidence-based outreach, and track outreach
 progress. It will never scrape LinkedIn or send messages automatically.
 
-## Phase 1 status
+## Phase 2 status
 
-This repository currently contains architecture and repository scaffolding only.
-Later phases will add persistence, authentication, matching, integrations, user
-flows, and tests. No Phase 2 feature is claimed to work yet.
+Phase 2 adds PostgreSQL/pgvector connection configuration, SQLAlchemy models,
+Alembic migrations, and an unauthenticated student profile API. Later phases
+will add authentication, matching, integrations, and outreach flows.
 
 ## Architecture
 
@@ -80,9 +80,25 @@ Set-Location frontend
 npm run dev
 ```
 
-The Phase 1 backend health endpoint is `http://localhost:8000/health`.
+The backend health endpoint is `http://localhost:8000/health`.
 Interactive API documentation will be at `http://localhost:8000/docs` once the
 backend is running.
+
+## Database migrations
+
+With Docker Desktop running and the database service started:
+
+```powershell
+Set-Location C:\Users\Admin\Documents\coding-journey\career-network-copilot
+docker compose up -d db
+.\backend\.venv\Scripts\Activate.ps1
+Set-Location backend
+alembic -c alembic.ini upgrade head
+Set-Location ..
+```
+
+The migration creates `student_profiles`, `career_goals`, `skills`, and
+`student_skills`. Alembic and the application read `DATABASE_URL` from `.env`.
 
 ## Checks
 
@@ -96,11 +112,6 @@ npm run typecheck
 npm run test
 Set-Location ..
 ```
-
-## Database commands
-
-Database migrations and models are intentionally deferred to Phase 2. The
-Compose service only verifies the PostgreSQL/pgvector foundation in Phase 1.
 
 ## Matching algorithm
 
@@ -124,8 +135,6 @@ API data will be minimized and attributed.
 
 ## Known limitations and future improvements
 
-Phase 1 does not include authentication, data models, migrations, matching,
-contact management, GitHub/CSV integrations, message generation, outreach
-tracking, seed data, or end-to-end journeys. Those are planned for later
-phases, with deterministic and testable behavior added before optional AI
-features.
+Phase 2 does not include authentication, contact management, matching,
+GitHub/CSV integrations, message generation, outreach tracking, seed data, or
+end-to-end journeys. Those are planned for later phases.
