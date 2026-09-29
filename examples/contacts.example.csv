@@ -1,0 +1,3 @@
+full_name,current_role,company,industry,location,school,skills_summary,profile_url,source_type,source_name,notes
+Fictional Data Builder,Data Engineer,Example Labs,Technology,Toronto,Example University,"Python; SQL",https://example.test/data-builder,csv,Student club spreadsheet,Fictional example only
+Fictional Product Maker,Product Designer,Sample Studio,Design,Remote,Sample College,"Research; Figma",https://example.test/product-maker,csv,User-provided notes,Fictional example only

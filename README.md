@@ -6,11 +6,11 @@ collaboration. It will rank manually supplied and permitted-source contacts,
 explain recommendations, draft evidence-based outreach, and track outreach
 progress. It will never scrape LinkedIn or send messages automatically.
 
-## Phase 3 status
+## Phase 4 status
 
-Phase 3 adds a responsive student onboarding and profile-management frontend
-connected to the unauthenticated student profile API. Later phases will add
-authentication, matching, integrations, and outreach flows.
+Phase 4 adds a compliant contact directory, manual and CSV imports, filters,
+pagination, and deterministic rule-based matching. Profile links are stored as
+references only; the application never fetches or scrapes them.
 
 ## Architecture
 
@@ -102,8 +102,14 @@ alembic -c alembic.ini upgrade head
 Set-Location ..
 ```
 
-The migration creates `student_profiles`, `career_goals`, `skills`, and
-`student_skills`. Alembic and the application read `DATABASE_URL` from `.env`.
+The migrations create `student_profiles`, `career_goals`, `skills`,
+`student_skills`, and `contacts`. Alembic and the application read
+`DATABASE_URL` from `.env`.
+
+The example CSV at `examples/contacts.example.csv` contains fictional records.
+CSV imports require `full_name` and `source_name`; the other contact fields are
+optional. Imports are limited to 500 rows and 5 MB. Users must have permission
+to use every imported record.
 
 ## Checks
 
@@ -122,10 +128,24 @@ Set-Location ..
 
 ## Matching algorithm
 
-The planned transparent score uses role (25%), company/industry (20%), shared
-context (20%), skills/projects (15%), location (10%), and networking goal
-relevance (10%). Each factor will be 0–100, and explanations will expose every
-factor. Sensitive characteristics will not be used.
+Phase 4 uses deterministic token overlap only. Each component is 0 or 100:
+
+```text
+total_score =
+  role_score     × 0.30 +
+  industry_score × 0.20 +
+  location_score × 0.15 +
+  school_score   × 0.15 +
+  skills_score   × 0.20
+```
+
+Role, industry, and location targets come from career goals. School comes from
+the student profile, and skills come from the student's saved skills. A
+component is 100 when normalized words overlap and 0 otherwise. Every returned
+match includes its component scores and plain-language reasons. No embeddings,
+LLM, sensitive traits, or fabricated facts are used.
+
+The matches page is explicitly labeled as rule-based matching, not AI ranking.
 
 ## LinkedIn compliance and privacy
 
@@ -142,6 +162,6 @@ API data will be minimized and attributed.
 
 ## Known limitations and future improvements
 
-Phase 3 does not include authentication, contact management, matching,
-GitHub/CSV integrations, message generation, outreach tracking, seed data, or
-end-to-end journeys. Those are planned for later phases.
+Phase 4 does not include authentication, GitHub/API discovery, message
+generation, outreach tracking, embeddings, or automated communication. Those
+are planned for later phases.

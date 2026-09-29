@@ -41,24 +41,138 @@ export type GoalInput = Omit<
 
 export type SkillInput = Omit<Skill, "id">;
 
+export type Contact = {
+  id: number;
+  full_name: string;
+  current_role: string | null;
+  company: string | null;
+  industry: string | null;
+  location: string | null;
+  school: string | null;
+  skills_summary: string | null;
+  profile_url: string | null;
+  source_type: "manual" | "csv";
+  source_name: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContactInput = Omit<Contact, "id" | "created_at" | "updated_at">;
+export type ContactMatch = {
+  contact: Contact;
+  total_score: number;
+  breakdown: { role: number; industry: number; location: number; school: number; skills: number };
+  reasons: string[];
+};
+
+export type ContactPage = { items: Contact[]; page: number; page_size: number; total: number };
+export type CsvImportSummary = { created: number; errors: { row: number; message: string }[] };
+
 const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
+type FastApiValidationError = {
+  loc?: Array<string | number>;
+  msg?: string;
+};
+
+type FastApiErrorBody = {
+  detail?: string | FastApiValidationError[] | Record<string, unknown>;
+};
+
+function formatDetail(detail: FastApiErrorBody["detail"]): string | null {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (!item || typeof item !== "object") return null;
+        const location = item.loc?.filter((part) => part !== "body").join(".");
+        const message = item.msg?.trim();
+        if (!message) return null;
+        return location ? `${location}: ${message}` : message;
+      })
+      .filter((message): message is string => Boolean(message));
+    if (messages.length) return messages.join("; ");
+  }
+  if (detail && typeof detail === "object") {
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return "The server returned an unreadable error.";
+    }
+  }
+  return null;
+}
+
+export function formatApiError(error: unknown, fallback = "The request could not be completed."): string {
+  if (error instanceof TypeError) return "Unable to reach the API. Check that FastAPI is running.";
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  return fallback;
+}
+
+function normalizeOptional(value: string | null | undefined): string | null {
+  const normalized = value?.trim() ?? "";
+  return normalized || null;
+}
+
+export function normalizeContactInput(payload: ContactInput): ContactInput {
+  return {
+    ...payload,
+    full_name: payload.full_name.trim(),
+    current_role: normalizeOptional(payload.current_role),
+    company: normalizeOptional(payload.company),
+    industry: normalizeOptional(payload.industry),
+    location: normalizeOptional(payload.location),
+    school: normalizeOptional(payload.school),
+    skills_summary: normalizeOptional(payload.skills_summary),
+    profile_url: normalizeOptional(payload.profile_url),
+    source_name: payload.source_name.trim(),
+    notes: normalizeOptional(payload.notes),
+  };
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiUrl}${path}`, {
-    ...options,
-    headers: { "Content-Type": "application/json", ...options?.headers },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl}${path}`, {
+      ...options,
+      headers: { "Content-Type": "application/json", ...options?.headers },
+    });
+  } catch (error) {
+    throw new Error(formatApiError(error));
+  }
   if (!response.ok) {
     let detail = `Request failed with status ${response.status}`;
     try {
-      const body = (await response.json()) as { detail?: string };
-      detail = body.detail ?? detail;
+      const body = (await response.json()) as FastApiErrorBody;
+      detail = formatDetail(body.detail) ?? detail;
     } catch {
       // Keep the status-based message when the server does not return JSON.
     }
+
     throw new Error(detail);
   }
   if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
+async function upload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl}${path}`, { method: "POST", body: form });
+  } catch (error) {
+    throw new Error(formatApiError(error));
+  }
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as FastApiErrorBody;
+    throw new Error(
+      formatDetail(body.detail) ?? `Request failed with status ${response.status}`,
+    );
+  }
   return response.json() as Promise<T>;
 }
 
@@ -93,4 +207,41 @@ export const profileApi = {
       method: "PUT",
       body: JSON.stringify({ skills }),
     }),
+  matches: (id: number) => request<ContactMatch[]>(`/student-profiles/${id}/matches`),
+};
+
+export const contactsApi = {
+  list: (params: Record<string, string | number | undefined>) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    });
+    return request<ContactPage>(`/contacts?${query.toString()}`);
+  },
+  create: (payload: ContactInput) =>
+    request<Contact>("/contacts", {
+      method: "POST",
+      body: JSON.stringify(normalizeContactInput(payload)),
+    }),
+  update: (id: number, payload: Partial<ContactInput>) =>
+    request<Contact>(`/contacts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(normalizeContactInput({ ...emptyContactInput, ...payload })),
+    }),
+  remove: (id: number) => request<void>(`/contacts/${id}`, { method: "DELETE" }),
+  importCsv: (file: File) => upload<CsvImportSummary>("/contacts/import-csv", file),
+};
+
+const emptyContactInput: ContactInput = {
+  full_name: "",
+  current_role: null,
+  company: null,
+  industry: null,
+  location: null,
+  school: null,
+  skills_summary: null,
+  profile_url: null,
+  source_type: "manual",
+  source_name: "",
+  notes: null,
 };
