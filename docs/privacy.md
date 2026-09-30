@@ -19,3 +19,10 @@ not fetch profile URLs, crawl websites, scrape LinkedIn, or use unofficial
 LinkedIn APIs. CSV files are bounded in size and row count, validated row by
 row, and formula-like spreadsheet values are rejected so imported text is not
 treated as an instruction.
+
+Outreach is human-controlled. Draft suggestions use only stored profile and
+contact fields, show the facts used for personalization, and remain editable.
+The application does not send messages, connect to LinkedIn messaging, click
+send controls, or claim that a message was sent automatically. A user must
+explicitly confirm manual-send, reply, archive, and delete actions. Draft
+status records describe user-reported activity only.

@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -197,3 +198,114 @@ class ContactMatch(BaseModel):
     total_score: float
     breakdown: MatchBreakdown
     reasons: list[str]
+
+
+class OutreachDraftStatus(StrEnum):
+    DRAFT = "draft"
+    APPROVED = "approved"
+    COPIED = "copied"
+    SENT_MANUALLY = "sent_manually"
+    REPLIED = "replied"
+    ARCHIVED = "archived"
+
+
+OutreachPurpose = Literal[
+    "informational_interview",
+    "career_advice",
+    "project_collaboration",
+    "internship_question",
+    "general_networking",
+]
+OutreachChannel = Literal["linkedin_connection_note", "linkedin_message", "email", "other"]
+OutreachTone = Literal["professional", "warm", "concise"]
+
+
+class OutreachDraftCreate(BaseModel):
+    student_profile_id: int = Field(gt=0)
+    contact_id: int = Field(gt=0)
+    purpose: OutreachPurpose
+    channel: OutreachChannel
+    tone: OutreachTone
+    subject: str | None = Field(default=None, max_length=240)
+    message: str = Field(min_length=1, max_length=10000)
+    user_notes: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("subject", "user_notes")
+    @classmethod
+    def trim_optional_text(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None and value.strip() else None
+
+    @field_validator("message")
+    @classmethod
+    def message_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("message must not be blank")
+        return value
+
+
+class OutreachDraftUpdate(BaseModel):
+    purpose: OutreachPurpose | None = None
+    channel: OutreachChannel | None = None
+    tone: OutreachTone | None = None
+    subject: str | None = Field(default=None, max_length=240)
+    message: str | None = Field(default=None, max_length=10000)
+    user_notes: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("subject", "user_notes")
+    @classmethod
+    def trim_update_text(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None and value.strip() else None
+
+    @field_validator("message")
+    @classmethod
+    def require_update_message(cls, value: str | None) -> str:
+        if value is None or not value.strip():
+            raise ValueError("message must not be blank")
+        return value.strip()
+
+
+class OutreachDraftResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    student_profile_id: int
+    contact_id: int
+    purpose: OutreachPurpose
+    channel: OutreachChannel
+    tone: OutreachTone
+    subject: str | None
+    message: str
+    status: OutreachDraftStatus
+    user_notes: str | None
+    created_at: datetime
+    updated_at: datetime
+    copied_at: datetime | None = None
+    sent_manually_at: datetime | None = None
+    replied_at: datetime | None = None
+
+
+class OutreachDraftPage(BaseModel):
+    items: list[OutreachDraftResponse]
+    page: int
+    page_size: int
+    total: int
+
+
+class OutreachSuggestion(BaseModel):
+    student_profile_id: int
+    contact_id: int
+    purpose: OutreachPurpose
+    channel: OutreachChannel
+    tone: OutreachTone
+    subject: str | None
+    message: str
+    facts_used: list[str]
+    character_count: int
+    connection_note_limit: int | None
+    is_rule_based: bool = True
+
+
+class OutreachActivitySummary(BaseModel):
+    total: int
+    by_status: dict[OutreachDraftStatus, int]

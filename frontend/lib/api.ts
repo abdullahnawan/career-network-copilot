@@ -68,6 +68,23 @@ export type ContactMatch = {
 
 export type ContactPage = { items: Contact[]; page: number; page_size: number; total: number };
 export type CsvImportSummary = { created: number; errors: { row: number; message: string }[] };
+export type OutreachStatus = "draft" | "approved" | "copied" | "sent_manually" | "replied" | "archived";
+export type OutreachPurpose = "informational_interview" | "career_advice" | "project_collaboration" | "internship_question" | "general_networking";
+export type OutreachChannel = "linkedin_connection_note" | "linkedin_message" | "email" | "other";
+export type OutreachTone = "professional" | "warm" | "concise";
+export type OutreachDraft = {
+  id: number; student_profile_id: number; contact_id: number; purpose: OutreachPurpose;
+  channel: OutreachChannel; tone: OutreachTone; subject: string | null; message: string;
+  status: OutreachStatus; user_notes: string | null; copied_at: string | null;
+  sent_manually_at: string | null; replied_at: string | null; created_at: string; updated_at: string;
+};
+export type OutreachDraftPage = { items: OutreachDraft[]; page: number; page_size: number; total: number };
+export type OutreachSuggestion = {
+  student_profile_id: number; contact_id: number; purpose: OutreachPurpose; channel: OutreachChannel;
+  tone: OutreachTone; subject: string | null; message: string; facts_used: string[];
+  character_count: number; connection_note_limit: number | null; is_rule_based: boolean;
+};
+export type OutreachInput = Omit<OutreachDraft, "id" | "status" | "copied_at" | "sent_manually_at" | "replied_at" | "created_at" | "updated_at">;
 
 const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
@@ -230,6 +247,27 @@ export const contactsApi = {
     }),
   remove: (id: number) => request<void>(`/contacts/${id}`, { method: "DELETE" }),
   importCsv: (file: File) => upload<CsvImportSummary>("/contacts/import-csv", file),
+};
+
+export const outreachApi = {
+  list: (params: Record<string, string | number | undefined>) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== "") query.set(key, String(value)); });
+    return request<OutreachDraftPage>(`/outreach-drafts?${query.toString()}`);
+  },
+  activity: (studentProfileId?: number) => request<{ total: number; by_status: Record<OutreachStatus, number> }>(
+    `/outreach-drafts/activity-summary${studentProfileId ? `?student_profile_id=${studentProfileId}` : ""}`,
+  ),
+  suggest: (params: { student_profile_id: number; contact_id: number; purpose: OutreachPurpose; channel: OutreachChannel; tone: OutreachTone }) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => query.set(key, String(value)));
+    return request<OutreachSuggestion>(`/outreach-drafts/suggest?${query.toString()}`, { method: "POST" });
+  },
+  create: (payload: OutreachInput) => request<OutreachDraft>("/outreach-drafts", { method: "POST", body: JSON.stringify(payload) }),
+  update: (id: number, payload: Partial<OutreachInput>) => request<OutreachDraft>(`/outreach-drafts/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  action: (id: number, action: "approve" | "copied" | "sent-manually" | "replied" | "archive") =>
+    request<OutreachDraft>(`/outreach-drafts/${id}/${action}`, { method: "POST" }),
+  remove: (id: number) => request<void>(`/outreach-drafts/${id}`, { method: "DELETE" }),
 };
 
 const emptyContactInput: ContactInput = {

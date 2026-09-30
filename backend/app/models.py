@@ -1,6 +1,16 @@
 from datetime import datetime
+from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -105,3 +115,48 @@ class Contact(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class OutreachDraftStatus(StrEnum):
+    DRAFT = "draft"
+    APPROVED = "approved"
+    COPIED = "copied"
+    SENT_MANUALLY = "sent_manually"
+    REPLIED = "replied"
+    ARCHIVED = "archived"
+
+
+class OutreachDraft(Base):
+    __tablename__ = "outreach_drafts"
+    __table_args__ = (
+        Index("ix_outreach_drafts_status", "status"),
+        Index("ix_outreach_drafts_contact_id", "contact_id"),
+        Index("ix_outreach_drafts_student_profile_id", "student_profile_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_profile_id: Mapped[int] = mapped_column(
+        ForeignKey("student_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    contact_id: Mapped[int] = mapped_column(
+        ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False
+    )
+    purpose: Mapped[str] = mapped_column(String(40), nullable=False)
+    channel: Mapped[str] = mapped_column(String(40), nullable=False)
+    tone: Mapped[str] = mapped_column(String(30), nullable=False)
+    subject: Mapped[str | None] = mapped_column(String(240))
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default=OutreachDraftStatus.DRAFT
+    )
+    user_notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    copied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_manually_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    replied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    student_profile: Mapped[StudentProfile] = relationship()
+    contact: Mapped[Contact] = relationship()

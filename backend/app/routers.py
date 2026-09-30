@@ -1,5 +1,6 @@
 import csv
 import io
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -8,7 +9,16 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
 from app.matching import calculate_match
-from app.models import CareerGoal, Contact, Skill, StudentProfile, StudentSkill
+from app.models import (
+    CareerGoal,
+    Contact,
+    OutreachDraft,
+    OutreachDraftStatus,
+    Skill,
+    StudentProfile,
+    StudentSkill,
+)
+from app.outreach import generate_suggestion
 from app.schemas import (
     CareerGoalCreate,
     CareerGoalResponse,
@@ -20,18 +30,29 @@ from app.schemas import (
     ContactUpdate,
     CsvImportError,
     CsvImportSummary,
+    OutreachActivitySummary,
+    OutreachDraftCreate,
+    OutreachDraftPage,
+    OutreachDraftResponse,
+    OutreachDraftUpdate,
+    OutreachSuggestion,
     SkillInput,
     SkillListRequest,
     StudentProfileCreate,
     StudentProfileResponse,
     StudentProfileUpdate,
 )
+from app.schemas import (
+    OutreachDraftStatus as OutreachDraftStatusSchema,
+)
 
 router = APIRouter(prefix="/student-profiles", tags=["student profiles"])
 contacts_router = APIRouter(prefix="/contacts", tags=["contacts"])
+outreach_router = APIRouter(prefix="/outreach-drafts", tags=["outreach drafts"])
 
 MAX_CSV_BYTES = 5 * 1024 * 1024
 MAX_CSV_ROWS = 500
+CONNECTION_NOTE_LIMIT = 300
 CSV_REQUIRED_COLUMNS = {"full_name", "source_name"}
 CSV_OPTIONAL_COLUMNS = {
     "current_role",
@@ -143,9 +164,7 @@ def delete_goal(profile_id: int, goal_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{profile_id}/skills", response_model=StudentProfileResponse)
-def replace_skills(
-    profile_id: int, payload: SkillListRequest, db: Session = Depends(get_db)
-):
+def replace_skills(profile_id: int, payload: SkillListRequest, db: Session = Depends(get_db)):
     profile = get_profile_or_404(db, profile_id)
     profile.skills.clear()
     db.flush()
@@ -331,3 +350,219 @@ def delete_contact(contact_id: int, db: Session = Depends(get_db)):
     contact = contact_or_404(db, contact_id)
     db.delete(contact)
     db.commit()
+
+
+def draft_or_404(db: Session, draft_id: int) -> OutreachDraft:
+    draft = db.get(OutreachDraft, draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Outreach draft not found")
+    return draft
+
+
+def transition(draft: OutreachDraft, target: OutreachDraftStatus) -> None:
+    current = OutreachDraftStatus(draft.status)
+    allowed = {
+        OutreachDraftStatus.DRAFT: {
+            OutreachDraftStatus.APPROVED,
+            OutreachDraftStatus.ARCHIVED,
+        },
+        OutreachDraftStatus.APPROVED: {
+            OutreachDraftStatus.COPIED,
+            OutreachDraftStatus.ARCHIVED,
+        },
+        OutreachDraftStatus.COPIED: {
+            OutreachDraftStatus.SENT_MANUALLY,
+            OutreachDraftStatus.ARCHIVED,
+        },
+        OutreachDraftStatus.SENT_MANUALLY: {
+            OutreachDraftStatus.REPLIED,
+            OutreachDraftStatus.ARCHIVED,
+        },
+        OutreachDraftStatus.REPLIED: {OutreachDraftStatus.ARCHIVED},
+        OutreachDraftStatus.ARCHIVED: set(),
+    }
+    if target not in allowed[current]:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot transition outreach draft from {current.value} to {target.value}",
+        )
+    draft.status = target.value
+    timestamp_fields = {
+        OutreachDraftStatus.COPIED: "copied_at",
+        OutreachDraftStatus.SENT_MANUALLY: "sent_manually_at",
+        OutreachDraftStatus.REPLIED: "replied_at",
+    }
+    timestamp_field = timestamp_fields.get(target)
+    if timestamp_field is not None:
+        setattr(draft, timestamp_field, datetime.now(timezone.utc))
+
+
+@outreach_router.post("", response_model=OutreachDraftResponse, status_code=201)
+def create_outreach_draft(payload: OutreachDraftCreate, db: Session = Depends(get_db)):
+    if db.get(StudentProfile, payload.student_profile_id) is None:
+        raise HTTPException(status_code=404, detail="Student profile not found")
+    if db.get(Contact, payload.contact_id) is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    if (
+        payload.channel == "linkedin_connection_note"
+        and len(payload.message) > CONNECTION_NOTE_LIMIT
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="linkedin_connection_note messages must be 300 characters or fewer",
+        )
+    draft = OutreachDraft(**payload.model_dump())
+    db.add(draft)
+    db.commit()
+    db.refresh(draft)
+    return draft
+
+
+@outreach_router.get("", response_model=OutreachDraftPage)
+def list_outreach_drafts(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    status_filter: OutreachDraftStatusSchema | None = Query(default=None, alias="status"),
+    purpose: str | None = None,
+    channel: str | None = None,
+    student_profile_id: int | None = Query(default=None, gt=0),
+    contact_id: int | None = Query(default=None, gt=0),
+    db: Session = Depends(get_db),
+):
+    query = select(OutreachDraft)
+    if status_filter:
+        query = query.where(OutreachDraft.status == status_filter.value)
+    if student_profile_id:
+        query = query.where(OutreachDraft.student_profile_id == student_profile_id)
+    if contact_id:
+        query = query.where(OutreachDraft.contact_id == contact_id)
+    if purpose:
+        query = query.where(OutreachDraft.purpose == purpose)
+    if channel:
+        query = query.where(OutreachDraft.channel == channel)
+    query = query.order_by(OutreachDraft.created_at.desc(), OutreachDraft.id.desc())
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    items = db.scalars(query.offset((page - 1) * page_size).limit(page_size)).all()
+    return OutreachDraftPage(items=items, page=page, page_size=page_size, total=total)
+
+
+@outreach_router.get("/activity-summary", response_model=OutreachActivitySummary)
+@outreach_router.get("/activity", response_model=OutreachActivitySummary, include_in_schema=False)
+def outreach_activity_summary(
+    student_profile_id: int | None = Query(default=None, gt=0),
+    db: Session = Depends(get_db),
+):
+    query = select(OutreachDraft.status, func.count()).group_by(OutreachDraft.status)
+    if student_profile_id:
+        query = query.where(OutreachDraft.student_profile_id == student_profile_id)
+    counts = {status.value: 0 for status in OutreachDraftStatus}
+    total = 0
+    for value, count in db.execute(query):
+        counts[value] = count
+        total += count
+    return OutreachActivitySummary(total=total, by_status=counts)
+
+
+@outreach_router.post("/suggest", response_model=OutreachSuggestion)
+@outreach_router.post("/suggestion", response_model=OutreachSuggestion, include_in_schema=False)
+def suggest_outreach(
+    student_profile_id: int = Query(gt=0),
+    contact_id: int = Query(gt=0),
+    purpose: str = Query(...),
+    channel: str = Query(...),
+    tone: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    profile = get_profile_or_404(db, student_profile_id)
+    contact = contact_or_404(db, contact_id)
+    allowed_purposes = {
+        "informational_interview", "career_advice", "project_collaboration",
+        "internship_question", "general_networking",
+    }
+    allowed_channels = {"linkedin_connection_note", "linkedin_message", "email", "other"}
+    allowed_tones = {"professional", "warm", "concise"}
+    if (
+        purpose not in allowed_purposes
+        or channel not in allowed_channels
+        or tone not in allowed_tones
+    ):
+        raise HTTPException(status_code=422, detail="Invalid purpose, channel, or tone")
+    subject, message, facts_used = generate_suggestion(
+        profile, contact, purpose, channel, tone
+    )
+    return OutreachSuggestion(
+        student_profile_id=student_profile_id,
+        contact_id=contact_id,
+        purpose=purpose,
+        channel=channel,
+        tone=tone,
+        subject=subject,
+        message=message,
+        facts_used=facts_used,
+        character_count=len(message),
+        connection_note_limit=(
+            300 if channel == "linkedin_connection_note" else None
+        ),
+    )
+
+
+@outreach_router.get("/{draft_id}", response_model=OutreachDraftResponse)
+def get_outreach_draft(draft_id: int, db: Session = Depends(get_db)):
+    return draft_or_404(db, draft_id)
+
+
+@outreach_router.patch("/{draft_id}", response_model=OutreachDraftResponse)
+def update_outreach_draft(
+    draft_id: int, payload: OutreachDraftUpdate, db: Session = Depends(get_db)
+):
+    draft = draft_or_404(db, draft_id)
+    values = payload.model_dump(exclude_unset=True)
+    effective_channel = values.get("channel", draft.channel)
+    effective_message = values.get("message", draft.message)
+    if (
+        effective_channel == "linkedin_connection_note"
+        and len(effective_message) > CONNECTION_NOTE_LIMIT
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="linkedin_connection_note messages must be 300 characters or fewer",
+        )
+    for field, value in values.items():
+        setattr(draft, field, value)
+    db.commit()
+    db.refresh(draft)
+    return draft
+
+
+@outreach_router.delete("/{draft_id}", status_code=204)
+def delete_outreach_draft(draft_id: int, db: Session = Depends(get_db)):
+    draft = draft_or_404(db, draft_id)
+    if draft.status != OutreachDraftStatus.DRAFT.value:
+        raise HTTPException(status_code=409, detail="Only draft outreach messages can be deleted")
+    db.delete(draft)
+    db.commit()
+
+
+def make_action(target: OutreachDraftStatus):
+    def action(draft_id: int, db: Session = Depends(get_db)):
+        draft = draft_or_404(db, draft_id)
+        transition(draft, target)
+        db.commit()
+        db.refresh(draft)
+        return draft
+
+    return action
+
+
+for _action, _target in (
+    ("approve", OutreachDraftStatus.APPROVED),
+    ("copied", OutreachDraftStatus.COPIED),
+    ("sent-manually", OutreachDraftStatus.SENT_MANUALLY),
+    ("replied", OutreachDraftStatus.REPLIED),
+    ("archive", OutreachDraftStatus.ARCHIVED),
+):
+    outreach_router.post(
+        f"/{{draft_id}}/{_action}",
+        response_model=OutreachDraftResponse,
+        status_code=200,
+    )(make_action(_target))
