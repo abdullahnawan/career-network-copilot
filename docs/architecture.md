@@ -33,6 +33,21 @@ industry 20%, location 15%, school 15%, and skills 20%. Each component is
 either 0 or 100, making the total and its reasons directly auditable. This is
 not an endorsement or an AI-generated ranking.
 
+## Phase 5 outreach decisions
+
+Outreach drafts are stored separately from contacts and profiles with foreign
+keys to both records. Purpose, channel, tone, and lifecycle status use bounded
+enum-like values. Status changes are validated by the backend; a draft cannot
+skip directly to replied, an archived draft cannot be reopened, and replied
+cannot move backward to sent_manually.
+
+Suggestions are deterministic templates built only from stored student and
+contact fields plus existing match reasons when available. Each suggestion
+returns the facts used, an optional email subject, character count, and the
+300-character connection-note limit. Suggestions are not saved until the user
+explicitly saves them. The system never sends messages or connects to
+LinkedIn, email, or another messaging provider.
+
 ## Risks and mitigations
 
 | Risk | Mitigation |

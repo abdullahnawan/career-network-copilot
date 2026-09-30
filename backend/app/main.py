@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import contacts_router
+from app.routers import contacts_router, outreach_router
 from app.routers import router as student_profiles_router
 
 settings = get_settings()
@@ -31,3 +31,4 @@ def health() -> dict[str, str]:
 
 app.include_router(student_profiles_router)
 app.include_router(contacts_router)
+app.include_router(outreach_router)

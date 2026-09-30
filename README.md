@@ -6,6 +6,13 @@ collaboration. It will rank manually supplied and permitted-source contacts,
 explain recommendations, draft evidence-based outreach, and track outreach
 progress. It will never scrape LinkedIn or send messages automatically.
 
+## Phase 5 status
+
+Phase 5 adds a human-controlled outreach workspace. It creates editable,
+rule-based draft suggestions from stored profile and contact facts, tracks
+approval/copy/manual-send/reply/archive status, and provides activity counts.
+The application never sends messages or connects to a messaging platform.
+
 ## Phase 4 status
 
 Phase 4 adds a compliant contact directory, manual and CSV imports, filters,
@@ -103,7 +110,7 @@ Set-Location ..
 ```
 
 The migrations create `student_profiles`, `career_goals`, `skills`,
-`student_skills`, and `contacts`. Alembic and the application read
+`student_skills`, `contacts`, and `outreach_drafts`. Alembic and the application read
 `DATABASE_URL` from `.env`.
 
 The example CSV at `examples/contacts.example.csv` contains fictional records.
@@ -162,6 +169,13 @@ API data will be minimized and attributed.
 
 ## Known limitations and future improvements
 
-Phase 4 does not include authentication, GitHub/API discovery, message
-generation, outreach tracking, embeddings, or automated communication. Those
-are planned for later phases.
+Phase 5 draft suggestions are deterministic templates, not LLM-generated text.
+They use only stored profile/contact facts and return a facts-used list for
+review. Connection notes are limited to 300 characters by validation; the
+frontend never silently truncates content.
+
+Career Network Copilot does not send messages. You remain responsible for
+reviewing and sending outreach manually.
+
+Authentication, discovery, embeddings, and automated communication remain out
+of scope.
