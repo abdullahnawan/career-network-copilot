@@ -5,6 +5,7 @@ import { ContactMatch, formatApiError, profileApi } from "../../lib/api";
 import { FormField } from "../../components/FormField";
 import { Layout } from "../../components/Layout";
 import { StatusMessage } from "../../components/StatusMessage";
+import { Badge, EmptyState, PageHeader, Score, SectionHeader } from "../../components/ui";
 
 export default function MatchesPage() {
   const [profileId, setProfileId] = useState("");
@@ -20,5 +21,34 @@ export default function MatchesPage() {
     catch (error) { setStatus({ kind: "error", message: formatApiError(error, "Unable to calculate matches.") }); }
     finally { setLoading(false); }
   }
-  return <Layout><div className="mb-8"><p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">Phase 4 · Matches</p><h1 className="mt-3 text-4xl font-semibold text-white">Explainable opportunities</h1><p className="mt-3 max-w-2xl text-slate-300">These rankings use deterministic field overlap only. They are not AI-generated endorsements.</p></div><form onSubmit={loadMatches} className="mb-6 flex max-w-md items-end gap-3"><div className="flex-1"><FormField label="Student profile ID" name="match-profile-id" value={profileId} onChange={setProfileId} type="number" /></div><button type="submit" className="rounded-lg bg-cyan-300 px-5 py-2.5 font-semibold text-slate-950">Find matches</button></form>{status && <div className="mb-6"><StatusMessage kind={status.kind}>{status.message}</StatusMessage></div>}{loading ? <p className="text-slate-400">Calculating matches...</p> : matches.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-700 p-8 text-slate-400">Enter a profile ID to see ranked contacts.</p> : <div className="space-y-4">{matches.map((match) => <article key={match.contact.id} className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6"><div className="flex flex-col justify-between gap-4 sm:flex-row"><div><h2 className="text-xl font-semibold text-white">{match.contact.full_name}</h2><p className="text-cyan-200">{match.contact.current_role || "Role not provided"}{match.contact.company ? ` · ${match.contact.company}` : ""}</p></div><div className="text-3xl font-semibold text-cyan-200">{match.total_score}%</div></div><div className="mt-5 grid gap-2 text-sm text-slate-300 sm:grid-cols-5">{Object.entries(match.breakdown).map(([key, value]) => <div key={key} className="rounded-lg bg-slate-800/70 p-3"><span className="block capitalize text-slate-400">{key}</span><strong>{value}%</strong></div>)}</div><ul className="mt-5 list-disc space-y-1 pl-5 text-sm text-slate-300">{match.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></article>)}</div>}</Layout>;
+  return (
+    <Layout>
+      <PageHeader eyebrow="Matches" title="Explainable opportunities" description="These rankings use deterministic field overlap only. They are not AI-generated endorsements." />
+      <section className="surface card-accent-cobalt mb-6">
+        <SectionHeader title="Find relevant contacts" description="Choose a profile to compare against your saved contact directory." />
+        <form onSubmit={loadMatches} className="flex max-w-md items-end gap-3">
+          <div className="flex-1"><FormField label="Student profile ID" name="match-profile-id" value={profileId} onChange={setProfileId} type="number" /></div>
+          <button type="submit" className="ui-button ui-button-primary">Find matches</button>
+        </form>
+      </section>
+      {status && <div className="mb-6"><StatusMessage kind={status.kind}>{status.message}</StatusMessage></div>}
+      {loading ? <p className="helper-text">Calculating matches...</p> : matches.length === 0 ? <EmptyState title="No ranked contacts yet">Enter a profile ID to see transparent, rule-based results.</EmptyState> : (
+        <div className="space-y-4">
+          {matches.map((match, index) => (
+            <article key={match.contact.id} className="surface card-accent-cobalt">
+              <div className="flex flex-col justify-between gap-5 sm:flex-row">
+                <div className="flex gap-4">
+                  <div className="rank-marker tabular-nums" aria-label={`Rank ${index + 1}`}>{index + 1}</div>
+                  <div><h2 className="card-title">{match.contact.full_name}</h2><p className="identity-line">{match.contact.current_role || "Role not provided"}{match.contact.company ? ` · ${match.contact.company}` : ""}</p><p className="metadata-line">{[match.contact.industry, match.contact.location, match.contact.school].filter(Boolean).join(" · ") || "No additional details"}</p></div>
+                </div>
+                <Score value={match.total_score} />
+              </div>
+              <div className="score-grid mt-6">{Object.entries(match.breakdown).map(([key, value]) => <div key={key} className="score-detail"><span className="metadata-label">{key.replaceAll("_", " ")}</span><strong className="tabular-nums">{value}%</strong></div>)}</div>
+              <div className="reason-panel mt-5"><h3>Why this matches</h3><ul>{match.reasons.map((reason) => <li key={reason}><Badge tone="info">Match reason</Badge><span>{reason}</span></li>)}</ul></div>
+            </article>
+          ))}
+        </div>
+      )}
+    </Layout>
+  );
 }

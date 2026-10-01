@@ -1,22 +1,31 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const links = [{ href: "/", label: "Profile" }, { href: "/contacts", label: "Contacts" }, { href: "/matches", label: "Matches" }, { href: "/outreach", label: "Outreach" }];
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-800 bg-slate-950/95">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
-          <Link href="/" className="text-lg font-semibold tracking-tight text-white">
-            Career Network <span className="text-cyan-300">Copilot</span>
-          </Link>
-          <nav className="flex gap-4 text-sm text-slate-300" aria-label="Primary navigation">
-            <Link href="/" className="hover:text-cyan-200">Profile</Link>
-            <Link href="/contacts" className="hover:text-cyan-200">Contacts</Link>
-            <Link href="/matches" className="hover:text-cyan-200">Matches</Link>
-            <Link href="/outreach" className="hover:text-cyan-200">Outreach</Link>
-          </nav>
-        </div>
-      </header>
-      <div className="mx-auto max-w-6xl px-5 py-10">{children}</div>
+    <div className="app-shell">
+      <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
+        <Link href="/" className="brand" onClick={() => setOpen(false)}>
+          <span className="brand-mark">CN</span><span>Career Network<strong>Copilot</strong></span>
+        </Link>
+        <nav aria-label="Primary navigation">
+          {links.map((link) => <Link key={link.href} href={link.href} onClick={() => setOpen(false)} className={pathname === link.href ? "nav-link active" : "nav-link"} aria-current={pathname === link.href ? "page" : undefined}>{link.label}</Link>)}
+        </nav>
+        <p className="sidebar-note">A calm workspace for thoughtful career conversations.</p>
+      </aside>
+      <div className="main-shell">
+        <header className="mobile-header">
+          <Link href="/" className="brand"><span className="brand-mark">CN</span><span>Career Network<strong>Copilot</strong></span></Link>
+          <button className="menu-button" type="button" aria-label="Open navigation" aria-expanded={open} onClick={() => setOpen(!open)}>☰</button>
+        </header>
+        <main className="content-shell">{children}</main>
+      </div>
     </div>
   );
 }
