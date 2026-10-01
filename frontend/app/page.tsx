@@ -6,6 +6,7 @@ import { FormField } from "../components/FormField";
 import { Layout } from "../components/Layout";
 import { SkillEditor } from "../components/SkillEditor";
 import { StatusMessage } from "../components/StatusMessage";
+import { PageHeader, Surface, SectionHeader } from "../components/ui";
 import { CareerGoal, formatApiError, GoalInput, ProfileFields, profileApi, SkillInput, StudentProfile } from "../lib/api";
 
 type GoalDraft = GoalInput & { id?: number };
@@ -145,26 +146,22 @@ export default function HomePage() {
 
   return (
     <Layout>
-      <div className="mb-10 max-w-3xl">
-        <p className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">Phase 3 · Your foundation</p>
-        <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">Shape your next career conversation.</h1>
-        <p className="mt-4 text-lg leading-8 text-slate-300">Create a clear, private career profile that will later help you discover relevant people and opportunities—always with you in control.</p>
-      </div>
+      <PageHeader eyebrow="Your foundation" title="Shape your next career conversation." description="Create a clear, private career profile that will help you discover relevant people and opportunities—always with you in control." />
 
-      <div className="mb-8 rounded-2xl border border-slate-800 bg-slate-900/50 p-5">
+      <Surface className="card-accent-cobalt mb-8">
         <form onSubmit={loadProfile} className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="w-full sm:max-w-xs">
             <FormField label="Load an existing profile" name="profile-id" value={profileId} onChange={setProfileId} type="number" placeholder="Profile ID" />
           </div>
           <button type="submit" disabled={loading} className="rounded-lg bg-slate-100 px-5 py-2.5 font-semibold text-slate-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60">Load profile</button>
         </form>
-      </div>
+      </Surface>
 
       {status && <div className="mb-8"><StatusMessage kind={status.kind}>{status.message}</StatusMessage></div>}
 
       <form onSubmit={saveProfile} className="space-y-8">
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 sm:p-8">
-          <div className="mb-6"><h2 className="text-xl font-semibold text-white">About you</h2><p className="mt-1 text-sm text-slate-400">Keep this practical and easy for a future professional connection to understand.</p></div>
+        <Surface className="card-accent-cobalt p-6 sm:p-8">
+          <SectionHeader title="Personal information" description="Keep this practical and easy for a future professional connection to understand." />
           <div className="grid gap-5 sm:grid-cols-2">
             <FormField label="Full name" name="full_name" value={fields.full_name} onChange={(value) => setField("full_name", value)} error={errors.full_name} required />
             <FormField label="School" name="school" value={fields.school ?? ""} onChange={(value) => setField("school", value)} placeholder="Your school or university" />
@@ -173,24 +170,24 @@ export default function HomePage() {
             <FormField label="Location" name="location" value={fields.location ?? ""} onChange={(value) => setField("location", value)} placeholder="City, region, or remote" />
           </div>
           <label htmlFor="bio" className="mt-5 block text-sm font-medium text-slate-200">Short bio</label>
-          <textarea id="bio" value={fields.bio ?? ""} onChange={(event) => setField("bio", event.target.value)} placeholder="What are you learning, building, or exploring?" className="mt-2 min-h-28 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-slate-100 outline-none focus:border-cyan-300" />
-        </section>
+          <textarea id="bio" value={fields.bio ?? ""} onChange={(event) => setField("bio", event.target.value)} placeholder="What are you learning, building, or exploring?" className="form-control mt-2 min-h-28 w-full rounded-lg px-3 py-2.5 outline-none" />
+        </Surface>
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 sm:p-8">
-          <div className="mb-6"><h2 className="text-xl font-semibold text-white">Career goals</h2><p className="mt-1 text-sm text-slate-400">Add the roles and kinds of conversations you want to work toward.</p></div>
+        <section className="surface card-accent-coral p-6 sm:p-8">
+          <SectionHeader accent="coral" title="Career goals" description="Add the roles and kinds of conversations you want to work toward." />
           <CareerGoalEditor goals={goals} onChange={setGoals} />
           {Object.entries(errors).filter(([key]) => key.startsWith("goal-")).map(([key, value]) => <p key={key} className="mt-2 text-sm text-rose-300">{value}</p>)}
         </section>
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 sm:p-8">
-          <div className="mb-6"><h2 className="text-xl font-semibold text-white">Skills</h2><p className="mt-1 text-sm text-slate-400">Be honest about your current level. You can update this as you grow.</p></div>
+        <section className="surface card-accent-yellow p-6 sm:p-8">
+          <SectionHeader accent="yellow" title="Skills" description="Be honest about your current level. You can update this as you grow." />
           <SkillEditor skills={skills} onChange={setSkills} />
           {Object.entries(errors).filter(([key]) => key.startsWith("skill-")).map(([key, value]) => <p key={key} className="mt-2 text-sm text-rose-300">{value}</p>)}
         </section>
 
         <div className="flex flex-col items-start justify-between gap-4 border-t border-slate-800 pt-6 sm:flex-row sm:items-center">
           <p className="text-sm text-slate-400">Your profile stays in your local development database until later privacy and account features are added.</p>
-          <button type="submit" disabled={loading} className="w-full rounded-lg bg-cyan-300 px-6 py-3 font-semibold text-slate-950 hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">{loading ? "Saving..." : profileId ? "Save changes" : "Create profile"}</button>
+          <button type="submit" disabled={loading} className="ui-button ui-button-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">{loading ? "Saving..." : profileId ? "Save changes" : "Create profile"}</button>
         </div>
       </form>
     </Layout>
