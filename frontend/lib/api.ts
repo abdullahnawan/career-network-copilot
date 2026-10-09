@@ -100,6 +100,34 @@ export type OutreachSuggestion = {
 };
 export type OutreachInput = Omit<OutreachDraft, "id" | "status" | "copied_at" | "sent_manually_at" | "replied_at" | "created_at" | "updated_at">;
 
+export type ApplicationStatus = "saved" | "applied" | "online_assessment" | "interview" | "offer" | "rejected" | "withdrawn";
+export type ApplicationSource = "co_op_board" | "company_site" | "job_board" | "referral" | "other";
+export type ApplicationAction = "apply" | "online-assessment" | "interview" | "offer" | "reject" | "withdraw";
+export type JobApplication = {
+  id: number; company: string; role_title: string; posting_url: string | null; location: string | null;
+  source: ApplicationSource; resume_version: string | null; referral_contact_id: number | null;
+  deadline: string | null; notes: string | null; status: ApplicationStatus;
+  applied_at: string | null; online_assessment_at: string | null; interview_at: string | null;
+  offer_at: string | null; closed_at: string | null; created_at: string; updated_at: string;
+};
+export type JobApplicationInput = {
+  company: string; role_title: string; posting_url: string | null; location: string | null;
+  source: ApplicationSource; resume_version: string | null; referral_contact_id: number | null;
+  deadline: string | null; notes: string | null;
+};
+export type JobApplicationPage = { items: JobApplication[]; page: number; page_size: number; total: number };
+export type FunnelStats = { applied: number; online_assessment: number; interview: number; offer: number; positive_response_rate: number };
+export type ApplicationSummary = {
+  total: number; by_status: Record<ApplicationStatus, number>; funnel: FunnelStats;
+  by_resume_version: Record<string, FunnelStats>; by_source: Record<string, FunnelStats>;
+  referral: FunnelStats; cold: FunnelStats;
+};
+export type FollowUpItem = {
+  kind: "application_no_response" | "outreach_no_reply" | "deadline_soon"; title: string; detail: string;
+  application_id: number | null; outreach_draft_id: number | null; since: string | null; due: string | null;
+};
+export type FollowUpList = { items: FollowUpItem[]; application_days: number; outreach_days: number; deadline_days: number };
+
 const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
 type FastApiValidationError = {
@@ -306,6 +334,48 @@ export const outreachApi = {
   action: (id: number, action: "approve" | "copied" | "sent-manually" | "replied" | "archive") =>
     request<OutreachDraft>(`/outreach-drafts/${id}/${action}`, { method: "POST" }),
   remove: (id: number) => request<void>(`/outreach-drafts/${id}`, { method: "DELETE" }),
+};
+
+export function normalizeApplicationInput(payload: JobApplicationInput): JobApplicationInput {
+  return {
+    ...payload,
+    company: payload.company.trim(),
+    role_title: payload.role_title.trim(),
+    posting_url: normalizeOptional(payload.posting_url),
+    location: normalizeOptional(payload.location),
+    resume_version: normalizeOptional(payload.resume_version),
+    deadline: normalizeOptional(payload.deadline),
+    notes: normalizeOptional(payload.notes),
+  };
+}
+
+function toQuery(params: Record<string, string | number | undefined>): string {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== "") query.set(key, String(value)); });
+  return query.toString();
+}
+
+export const applicationsApi = {
+  list: (params: Record<string, string | number | undefined>) =>
+    request<JobApplicationPage>(`/applications?${toQuery(params)}`),
+  summary: () => request<ApplicationSummary>("/applications/summary"),
+  create: (payload: JobApplicationInput, status: "saved" | "applied" = "saved") =>
+    request<JobApplication>("/applications", {
+      method: "POST",
+      body: JSON.stringify({ ...normalizeApplicationInput(payload), status }),
+    }),
+  update: (id: number, payload: JobApplicationInput) =>
+    request<JobApplication>(`/applications/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(normalizeApplicationInput(payload)),
+    }),
+  action: (id: number, action: ApplicationAction) =>
+    request<JobApplication>(`/applications/${id}/${action}`, { method: "POST" }),
+  remove: (id: number) => request<void>(`/applications/${id}`, { method: "DELETE" }),
+};
+
+export const followUpsApi = {
+  list: () => request<FollowUpList>("/follow-ups"),
 };
 
 const emptyContactInput: ContactInput = {

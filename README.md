@@ -6,6 +6,17 @@ collaboration. It will rank manually supplied and permitted-source contacts,
 explain recommendations, draft evidence-based outreach, and track outreach
 progress. It will never scrape LinkedIn or send messages automatically.
 
+## Phase 8 status
+
+Phase 8 adds an application pipeline. You log each job application you submit
+yourself, move it through saved, applied, online assessment, interview, offer,
+rejected, or withdrawn, and link the contact who referred you. The funnel view
+compares positive response rates by resume version and by referral versus cold
+applications. A follow-ups list flags applications with no response after 21
+days, sent outreach with no reply after 7 days, and saved roles whose deadline
+is within 7 days. The application never submits applications or contacts
+employers.
+
 ## Phase 5 status
 
 Phase 5 adds a human-controlled outreach workspace. It creates editable,
