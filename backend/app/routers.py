@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth import CurrentUser
@@ -13,6 +13,7 @@ from app.matching import calculate_match
 from app.models import (
     CareerGoal,
     Contact,
+    JobApplication,
     OutreachDraft,
     OutreachDraftStatus,
     Skill,
@@ -397,6 +398,11 @@ def update_contact(
 @contacts_router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_contact(contact_id: int, user: CurrentUser, db: Session = Depends(get_db)):
     contact = contact_or_404(db, contact_id, user.id)
+    db.execute(
+        update(JobApplication)
+        .where(JobApplication.referral_contact_id == contact.id)
+        .values(referral_contact_id=None)
+    )
     db.delete(contact)
     db.commit()
 

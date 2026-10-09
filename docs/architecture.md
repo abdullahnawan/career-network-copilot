@@ -48,6 +48,20 @@ returns the facts used, an optional email subject, character count, and the
 explicitly saves them. The system never sends messages or connects to
 LinkedIn, email, or another messaging provider.
 
+## Phase 8 application pipeline decisions
+
+- `job_applications` is owned per user like every other table, and a referral
+  contact must belong to the same user. Deleting a contact unlinks it from
+  applications instead of deleting them.
+- Status changes go through explicit action endpoints with an allowed-transition
+  table, mirroring outreach drafts. Each stage records its first timestamp, which
+  powers the funnel without a separate event log.
+- The funnel counts an application as reaching a stage if that stage's
+  timestamp is set, so rejected applications still count toward earlier stages.
+- Follow-ups are computed on read from timestamps and deadlines; nothing is
+  scheduled or sent.
+- Applications are included in privacy export and account deletion.
+
 ## Risks and mitigations
 
 | Risk | Mitigation |

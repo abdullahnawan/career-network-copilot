@@ -11,7 +11,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const { user, loading, logout } = useAuth();
   useEffect(() => { if (!loading && !user) window.location.assign("/login"); }, [loading, user]);
-  const links = [{ href: "/", label: "Profile" }, { href: "/contacts", label: "Contacts" }, { href: "/matches", label: "Matches" }, { href: "/outreach", label: "Outreach" }];
+  const links = [{ href: "/", label: "Profile" }, { href: "/contacts", label: "Contacts" }, { href: "/matches", label: "Matches" }, { href: "/outreach", label: "Outreach" }, { href: "/applications", label: "Applications" }];
   return (
     <div className="app-shell">
       <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
