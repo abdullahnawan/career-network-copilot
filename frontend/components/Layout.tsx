@@ -11,6 +11,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const { user, loading, logout } = useAuth();
   useEffect(() => { if (!loading && !user) window.location.assign("/login"); }, [loading, user]);
+  // Render nothing protected until the session is confirmed, so signed-out visitors never see the app shell.
+  if (loading || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-slate-500" role="status">
+        {loading ? "Checking your session…" : "Redirecting to sign in…"}
+      </div>
+    );
+  }
   const links = [{ href: "/", label: "Profile" }, { href: "/contacts", label: "Contacts" }, { href: "/matches", label: "Matches" }, { href: "/outreach", label: "Outreach" }, { href: "/applications", label: "Applications" }];
   return (
     <div className="app-shell">
