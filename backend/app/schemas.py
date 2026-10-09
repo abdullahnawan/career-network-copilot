@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -348,3 +348,162 @@ class OutreachSuggestion(BaseModel):
 class OutreachActivitySummary(BaseModel):
     total: int
     by_status: dict[OutreachDraftStatus, int]
+
+
+class ApplicationStatus(StrEnum):
+    SAVED = "saved"
+    APPLIED = "applied"
+    ONLINE_ASSESSMENT = "online_assessment"
+    INTERVIEW = "interview"
+    OFFER = "offer"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+
+
+ApplicationSource = Literal["co_op_board", "company_site", "job_board", "referral", "other"]
+
+
+def _clean_optional(value: str | None) -> str | None:
+    return value.strip() if value is not None and value.strip() else None
+
+
+def _posting_url(value: str | None) -> str | None:
+    if value is not None and not value.startswith(("http://", "https://")):
+        raise ValueError("posting_url must be an http or https link")
+    return value
+
+
+class JobApplicationCreate(BaseModel):
+    company: str = Field(min_length=1, max_length=160)
+    role_title: str = Field(min_length=1, max_length=160)
+    posting_url: str | None = Field(default=None, max_length=500)
+    location: str | None = Field(default=None, max_length=160)
+    source: ApplicationSource = "company_site"
+    resume_version: str | None = Field(default=None, max_length=60)
+    referral_contact_id: int | None = Field(default=None, gt=0)
+    deadline: date | None = None
+    notes: str | None = Field(default=None, max_length=4000)
+    status: Literal[ApplicationStatus.SAVED, ApplicationStatus.APPLIED] = ApplicationStatus.SAVED
+    applied_at: datetime | None = None
+
+    @field_validator("company", "role_title")
+    @classmethod
+    def required_text_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("posting_url", "location", "resume_version", "notes")
+    @classmethod
+    def trim_optional(cls, value: str | None) -> str | None:
+        return _clean_optional(value)
+
+    @field_validator("posting_url")
+    @classmethod
+    def link_only(cls, value: str | None) -> str | None:
+        return _posting_url(value)
+
+    @model_validator(mode="after")
+    def applied_at_requires_applied(self) -> "JobApplicationCreate":
+        if self.applied_at is not None and self.status != ApplicationStatus.APPLIED:
+            raise ValueError("applied_at can only be set when status is applied")
+        return self
+
+
+class JobApplicationUpdate(BaseModel):
+    company: str | None = Field(default=None, min_length=1, max_length=160)
+    role_title: str | None = Field(default=None, min_length=1, max_length=160)
+    posting_url: str | None = Field(default=None, max_length=500)
+    location: str | None = Field(default=None, max_length=160)
+    source: ApplicationSource | None = None
+    resume_version: str | None = Field(default=None, max_length=60)
+    referral_contact_id: int | None = Field(default=None, gt=0)
+    deadline: date | None = None
+    notes: str | None = Field(default=None, max_length=4000)
+    applied_at: datetime | None = None
+
+    @field_validator("company", "role_title")
+    @classmethod
+    def required_update_text(cls, value: str | None) -> str:
+        if value is None or not value.strip():
+            raise ValueError("must not be blank")
+        return value.strip()
+
+    @field_validator("posting_url", "location", "resume_version", "notes")
+    @classmethod
+    def trim_optional(cls, value: str | None) -> str | None:
+        return _clean_optional(value)
+
+    @field_validator("posting_url")
+    @classmethod
+    def link_only(cls, value: str | None) -> str | None:
+        return _posting_url(value)
+
+
+class JobApplicationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company: str
+    role_title: str
+    posting_url: str | None
+    location: str | None
+    source: ApplicationSource
+    resume_version: str | None
+    referral_contact_id: int | None
+    deadline: date | None
+    notes: str | None
+    status: ApplicationStatus
+    applied_at: datetime | None = None
+    online_assessment_at: datetime | None = None
+    interview_at: datetime | None = None
+    offer_at: datetime | None = None
+    closed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class JobApplicationPage(BaseModel):
+    items: list[JobApplicationResponse]
+    page: int
+    page_size: int
+    total: int
+
+
+class FunnelStats(BaseModel):
+    applied: int
+    online_assessment: int
+    interview: int
+    offer: int
+    positive_response_rate: float
+
+
+class ApplicationSummary(BaseModel):
+    total: int
+    by_status: dict[ApplicationStatus, int]
+    funnel: FunnelStats
+    by_resume_version: dict[str, FunnelStats]
+    by_source: dict[str, FunnelStats]
+    referral: FunnelStats
+    cold: FunnelStats
+
+
+FollowUpKind = Literal["application_no_response", "outreach_no_reply", "deadline_soon"]
+
+
+class FollowUpItem(BaseModel):
+    kind: FollowUpKind
+    title: str
+    detail: str
+    application_id: int | None = None
+    outreach_draft_id: int | None = None
+    since: datetime | None = None
+    due: date | None = None
+
+
+class FollowUpList(BaseModel):
+    items: list[FollowUpItem]
+    application_days: int
+    outreach_days: int
+    deadline_days: int

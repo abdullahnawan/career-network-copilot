@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 from sqlalchemy import (
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -189,3 +190,50 @@ class UserSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ApplicationStatus(StrEnum):
+    SAVED = "saved"
+    APPLIED = "applied"
+    ONLINE_ASSESSMENT = "online_assessment"
+    INTERVIEW = "interview"
+    OFFER = "offer"
+    REJECTED = "rejected"
+    WITHDRAWN = "withdrawn"
+
+
+class JobApplication(Base):
+    __tablename__ = "job_applications"
+    __table_args__ = (
+        Index("ix_job_applications_status", "status"),
+        Index("ix_job_applications_company", "company"),
+        Index("ix_job_applications_referral_contact_id", "referral_contact_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    company: Mapped[str] = mapped_column(String(160), nullable=False)
+    role_title: Mapped[str] = mapped_column(String(160), nullable=False)
+    posting_url: Mapped[str | None] = mapped_column(String(500))
+    location: Mapped[str | None] = mapped_column(String(160))
+    source: Mapped[str] = mapped_column(String(30), nullable=False)
+    resume_version: Mapped[str | None] = mapped_column(String(60))
+    referral_contact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("contacts.id", ondelete="SET NULL")
+    )
+    deadline: Mapped[date | None] = mapped_column(Date)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default=ApplicationStatus.SAVED
+    )
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    online_assessment_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    interview_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    offer_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    referral_contact: Mapped[Contact | None] = relationship()

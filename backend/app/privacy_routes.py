@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import CurrentUser, validate_origin
 from app.config import get_settings
 from app.db import get_db
-from app.models import Contact, OutreachDraft, StudentProfile, UserSession
+from app.models import Contact, JobApplication, OutreachDraft, StudentProfile, UserSession
 from app.schemas import PasswordConfirmation
 
 router = APIRouter(prefix="/privacy", tags=["privacy"])
@@ -21,6 +21,9 @@ def export_data(user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
     contacts = db.scalars(select(Contact).where(Contact.owner_id == user.id)).all()
     profiles = db.scalars(select(StudentProfile).where(StudentProfile.owner_id == user.id)).all()
     drafts = db.scalars(select(OutreachDraft).where(OutreachDraft.owner_id == user.id)).all()
+    applications = db.scalars(
+        select(JobApplication).where(JobApplication.owner_id == user.id)
+    ).all()
     return {
         "user": {"id": user.id, "email": user.email},
         "student_profiles": [
@@ -50,6 +53,23 @@ def export_data(user: CurrentUser, db: Annotated[Session, Depends(get_db)]):
             {"id": c.id, "full_name": c.full_name, "company": c.company} for c in contacts
         ],
         "outreach_drafts": [{"id": d.id, "message": d.message, "status": d.status} for d in drafts],
+        "applications": [
+            {
+                "id": a.id,
+                "company": a.company,
+                "role_title": a.role_title,
+                "posting_url": a.posting_url,
+                "location": a.location,
+                "source": a.source,
+                "resume_version": a.resume_version,
+                "referral_contact_id": a.referral_contact_id,
+                "deadline": a.deadline.isoformat() if a.deadline else None,
+                "status": a.status,
+                "notes": a.notes,
+                "applied_at": a.applied_at.isoformat() if a.applied_at else None,
+            }
+            for a in applications
+        ],
     }
 
 
@@ -67,6 +87,7 @@ def delete_account(
         from fastapi import HTTPException
 
         raise HTTPException(status_code=400, detail="Password confirmation failed")
+    db.execute(delete(JobApplication).where(JobApplication.owner_id == user.id))
     db.execute(delete(OutreachDraft).where(OutreachDraft.owner_id == user.id))
     db.execute(delete(Contact).where(Contact.owner_id == user.id))
     db.execute(delete(StudentProfile).where(StudentProfile.owner_id == user.id))

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from app.applications import applications_router, follow_ups_router
 from app.auth_routes import router as auth_router
 from app.config import get_settings
 from app.privacy_routes import account_router
@@ -49,6 +50,8 @@ def health() -> dict[str, str]:
 app.include_router(student_profiles_router)
 app.include_router(contacts_router)
 app.include_router(outreach_router)
+app.include_router(applications_router)
+app.include_router(follow_ups_router)
 app.include_router(auth_router)
 app.include_router(privacy_router)
 app.include_router(account_router)
