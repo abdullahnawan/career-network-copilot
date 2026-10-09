@@ -29,6 +29,20 @@ export type StudentProfile = {
   skills: Skill[];
 };
 
+export type CurrentUser = {
+  id: number;
+  email: string;
+  display_name: string;
+  profile?: StudentProfile | null;
+};
+
+export class UnauthorizedError extends Error {
+  constructor() {
+    super("Your session has expired. Please sign in again.");
+    this.name = "UnauthorizedError";
+  }
+}
+
 export type ProfileFields = Omit<
   StudentProfile,
   "id" | "created_at" | "updated_at" | "career_goals" | "skills"
@@ -155,12 +169,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   try {
     response = await fetch(`${apiUrl}${path}`, {
       ...options,
+      credentials: "include",
       headers: { "Content-Type": "application/json", ...options?.headers },
     });
   } catch (error) {
     throw new Error(formatApiError(error));
   }
   if (!response.ok) {
+    if (response.status === 401) throw new UnauthorizedError();
     let detail = `Request failed with status ${response.status}`;
     try {
       const body = (await response.json()) as FastApiErrorBody;
@@ -180,20 +196,42 @@ async function upload<T>(path: string, file: File): Promise<T> {
   form.append("file", file);
   let response: Response;
   try {
-    response = await fetch(`${apiUrl}${path}`, { method: "POST", body: form });
+    response = await fetch(`${apiUrl}${path}`, { method: "POST", body: form, credentials: "include" });
   } catch (error) {
     throw new Error(formatApiError(error));
   }
   if (!response.ok) {
+    if (response.status === 401) throw new UnauthorizedError();
     const body = (await response.json().catch(() => ({}))) as FastApiErrorBody;
     throw new Error(
       formatDetail(body.detail) ?? `Request failed with status ${response.status}`,
     );
   }
+
   return response.json() as Promise<T>;
 }
 
+export const authApi = {
+  me: () => request<CurrentUser>("/auth/me"),
+  login: (email: string, password: string) => request<CurrentUser>("/auth/login", {
+    method: "POST", body: JSON.stringify({ email, password }),
+  }),
+  register: (email: string, password: string, display_name: string) => request<CurrentUser>("/auth/register", {
+    method: "POST", body: JSON.stringify({ email, password, display_name }),
+  }),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+};
+
+export const accountApi = {
+  export: () => request<Record<string, unknown>>("/account/export"),
+  delete: (password: string) => request<void>("/account", {
+    method: "DELETE",
+    body: JSON.stringify({ password }),
+  }),
+};
+
 export const profileApi = {
+  current: () => request<StudentProfile>("/student-profiles/me"),
   get: (id: number) => request<StudentProfile>(`/student-profiles/${id}`),
   create: (fields: ProfileFields, goals: GoalInput[], skills: SkillInput[]) =>
     request<StudentProfile>("/student-profiles", {

@@ -111,6 +111,45 @@ class StudentProfileResponse(StudentProfileBase):
     skills: list[StudentSkillResponse] = Field(default_factory=list)
 
 
+class RegisterRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    display_name: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=10, max_length=128)
+
+    @field_validator("display_name")
+    @classmethod
+    def display_name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if "@" not in value:
+            raise ValueError("must be a valid email")
+        return value
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=10, max_length=128)
+
+
+class PasswordConfirmation(BaseModel):
+    password: str = Field(min_length=10, max_length=128)
+
+
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    email: str
+    display_name: str
+    created_at: datetime
+
+
 SourceType = Literal["manual", "csv"]
 
 

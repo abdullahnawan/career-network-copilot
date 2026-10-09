@@ -177,5 +177,26 @@ frontend never silently truncates content.
 Career Network Copilot does not send messages. You remain responsible for
 reviewing and sending outreach manually.
 
-Authentication, discovery, embeddings, and automated communication remain out
-of scope.
+## Phase 7 authentication and privacy
+
+The application now uses first-party email/password authentication. Passwords
+are hashed with Argon2id. Login creates a cryptographically random opaque
+session token; only its SHA-256 hash is stored in PostgreSQL and the raw token
+is sent in an HttpOnly, SameSite=Lax cookie. The frontend never reads or stores
+the token and all API requests use credentialed cookies.
+
+Profiles, contacts, matches, and outreach drafts are scoped to the authenticated
+user. The migration `20260930_01` preserves existing local records by assigning
+them to a disabled-password legacy account; those records are not exposed until
+they are intentionally migrated by a future administrative workflow.
+
+Use `/account` to download a JSON export or permanently delete the account
+after password confirmation. Password-reset email is not implemented because
+no safe email provider is configured. Authentication endpoints do not currently
+provide shared distributed rate limiting; production deployments should add
+rate limiting at the edge or application layer.
+
+For production, serve the frontend and backend over HTTPS and set
+`SESSION_COOKIE_SECURE=true`. Keep `TRUSTED_FRONTEND_ORIGINS` explicit and
+never use wildcard origins with credentialed CORS. Expired sessions should be
+periodically cleaned up with a scheduled database maintenance job.

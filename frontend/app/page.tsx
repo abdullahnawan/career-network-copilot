@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { CareerGoalEditor } from "../components/CareerGoalEditor";
 import { FormField } from "../components/FormField";
 import { Layout } from "../components/Layout";
@@ -8,6 +8,7 @@ import { SkillEditor } from "../components/SkillEditor";
 import { StatusMessage } from "../components/StatusMessage";
 import { PageHeader, Surface, SectionHeader } from "../components/ui";
 import { CareerGoal, formatApiError, GoalInput, ProfileFields, profileApi, SkillInput, StudentProfile } from "../lib/api";
+import { useAuth } from "../components/AuthProvider";
 
 type GoalDraft = GoalInput & { id?: number };
 
@@ -32,6 +33,7 @@ function toGoalInput(goal: CareerGoal): GoalDraft {
 }
 
 export default function HomePage() {
+  const { profile: currentProfile, refresh } = useAuth();
   const [profileId, setProfileId] = useState("");
   const [fields, setFields] = useState<ProfileFields>(emptyFields);
   const [goals, setGoals] = useState<GoalDraft[]>([]);
@@ -66,25 +68,7 @@ export default function HomePage() {
     return Object.keys(nextErrors).length === 0;
   }
 
-  async function loadProfile(event: FormEvent) {
-    event.preventDefault();
-    const id = Number(profileId);
-    if (!Number.isInteger(id) || id <= 0) {
-      setStatus({ kind: "error", message: "Enter a valid numeric profile ID." });
-      return;
-    }
-    setLoading(true);
-    setStatus({ kind: "info", message: "Loading your profile..." });
-    try {
-      const profile = await profileApi.get(id);
-      applyProfile(profile);
-      setStatus({ kind: "success", message: "Profile loaded. You can edit it below." });
-    } catch (error) {
-      setStatus({ kind: "error", message: formatApiError(error, "Unable to load profile.") });
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => { if (currentProfile) applyProfile(currentProfile); }, [currentProfile]);
 
   function applyProfile(profile: StudentProfile) {
     setProfileId(String(profile.id));
@@ -136,6 +120,7 @@ export default function HomePage() {
         );
       }
       applyProfile(saved);
+      await refresh();
       setStatus({ kind: "success", message: `Profile saved. Your profile ID is ${saved.id}.` });
     } catch (error) {
       setStatus({ kind: "error", message: formatApiError(error, "Unable to save profile.") });
@@ -147,15 +132,6 @@ export default function HomePage() {
   return (
     <Layout>
       <PageHeader eyebrow="Your foundation" title="Shape your next career conversation." description="Create a clear, private career profile that will help you discover relevant people and opportunities—always with you in control." />
-
-      <Surface className="card-accent-cobalt mb-8">
-        <form onSubmit={loadProfile} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="w-full sm:max-w-xs">
-            <FormField label="Load an existing profile" name="profile-id" value={profileId} onChange={setProfileId} type="number" placeholder="Profile ID" />
-          </div>
-          <button type="submit" disabled={loading} className="rounded-lg bg-slate-100 px-5 py-2.5 font-semibold text-slate-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60">Load profile</button>
-        </form>
-      </Surface>
 
       {status && <div className="mb-8"><StatusMessage kind={status.kind}>{status.message}</StatusMessage></div>}
 
