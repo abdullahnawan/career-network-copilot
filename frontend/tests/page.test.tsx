@@ -71,8 +71,8 @@ describe("student profile onboarding", () => {
       new Response(JSON.stringify({ detail: "Student profile not found" }), { status: 404 }),
     );
     render(<HomePage />);
-    fireEvent.change(screen.getByLabelText(/Load an existing profile/), { target: { value: "99" } });
-    fireEvent.click(screen.getByRole("button", { name: "Load profile" }));
+    fireEvent.change(screen.getByLabelText(/Full name/), { target: { value: "Demo Student" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create profile" }));
     await waitFor(() => expect(screen.getByText("Student profile not found")).toBeInTheDocument());
   });
 });

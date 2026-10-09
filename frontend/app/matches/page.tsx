@@ -1,38 +1,39 @@
 "use client";
+/* eslint-disable react-hooks/exhaustive-deps */
 
-import { FormEvent, useState } from "react";
+import { useEffect, useState } from "react";
 import { ContactMatch, formatApiError, profileApi } from "../../lib/api";
-import { FormField } from "../../components/FormField";
 import { Layout } from "../../components/Layout";
 import { StatusMessage } from "../../components/StatusMessage";
 import { Badge, EmptyState, PageHeader, Score, SectionHeader } from "../../components/ui";
+import { useAuth } from "../../components/AuthProvider";
 
 export default function MatchesPage() {
-  const [profileId, setProfileId] = useState("");
+  const { profile } = useAuth();
   const [matches, setMatches] = useState<ContactMatch[]>([]);
   const [status, setStatus] = useState<{ kind: "error" | "success" | "info"; message: string } | null>(null);
   const [loading, setLoading] = useState(false);
-  async function loadMatches(event: FormEvent) {
-    event.preventDefault();
-    const id = Number(profileId);
-    if (!Number.isInteger(id) || id <= 0) { setStatus({ kind: "error", message: "Enter a valid numeric profile ID." }); return; }
+  async function loadMatches() {
+    if (!profile) return;
+    const id = profile.id;
     setLoading(true); setStatus({ kind: "info", message: "Calculating transparent rule-based matches..." });
     try { const result = await profileApi.matches(id); setMatches(result); setStatus({ kind: "success", message: `Ranked ${result.length} contact(s) using deterministic overlap rules.` }); }
     catch (error) { setStatus({ kind: "error", message: formatApiError(error, "Unable to calculate matches.") }); }
     finally { setLoading(false); }
   }
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadMatches(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [profile]);
   return (
     <Layout>
       <PageHeader eyebrow="Matches" title="Explainable opportunities" description="These rankings use deterministic field overlap only. They are not AI-generated endorsements." />
       <section className="surface card-accent-cobalt mb-6">
         <SectionHeader title="Find relevant contacts" description="Choose a profile to compare against your saved contact directory." />
-        <form onSubmit={loadMatches} className="flex max-w-md items-end gap-3">
-          <div className="flex-1"><FormField label="Student profile ID" name="match-profile-id" value={profileId} onChange={setProfileId} type="number" /></div>
-          <button type="submit" className="ui-button ui-button-primary">Find matches</button>
-        </form>
+        <p className="text-sm text-slate-400">Using your current profile. Matches refresh automatically when your profile changes.</p>
       </section>
       {status && <div className="mb-6"><StatusMessage kind={status.kind}>{status.message}</StatusMessage></div>}
-      {loading ? <p className="helper-text">Calculating matches...</p> : matches.length === 0 ? <EmptyState title="No ranked contacts yet">Enter a profile ID to see transparent, rule-based results.</EmptyState> : (
+      {loading ? <p className="helper-text">Calculating matches...</p> : matches.length === 0 ? <EmptyState title="No ranked contacts yet">Add profile details and contacts to see transparent, rule-based results.</EmptyState> : (
         <div className="space-y-4">
           {matches.map((match, index) => (
             <article key={match.contact.id} className="surface card-accent-cobalt">

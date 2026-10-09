@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import ContactsPage from "../app/contacts/page";
 import MatchesPage from "../app/matches/page";
 
+vi.mock("../components/AuthProvider", () => ({
+  useAuth: () => ({ profile: { id: 1 }, loading: false, user: { id: 1, email: "demo@example.com" } }),
+}));
+
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(global, "fetch").mockResolvedValue(
@@ -114,8 +118,6 @@ describe("rule-based matches", () => {
       }]), { status: 200 }),
     );
     render(<MatchesPage />);
-    fireEvent.change(screen.getByLabelText("Student profile ID"), { target: { value: "1" } });
-    fireEvent.click(screen.getByRole("button", { name: "Find matches" }));
     expect(await screen.findByText("Fictional Match")).toBeInTheDocument();
     expect(screen.getByText("Matches your target role.")).toBeInTheDocument();
     expect(screen.getByText("80%")).toBeInTheDocument();
@@ -124,8 +126,6 @@ describe("rule-based matches", () => {
   it("shows API errors", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify({ detail: "Student profile not found" }), { status: 404 }));
     render(<MatchesPage />);
-    fireEvent.change(screen.getByLabelText("Student profile ID"), { target: { value: "999" } });
-    fireEvent.click(screen.getByRole("button", { name: "Find matches" }));
     expect(await screen.findByText("Student profile not found")).toBeInTheDocument();
   });
 });

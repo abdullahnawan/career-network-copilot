@@ -57,3 +57,21 @@ LinkedIn, email, or another messaging provider.
 | Provider/API outages | Timeouts, rate-limit handling, caching, and deterministic local behavior. |
 | Biased recommendations | Exclude sensitive characteristics and expose weighted factors. |
 | Accidental automation | Keep external profile actions user-initiated and out of scope. |
+
+## Phase 7 authentication and ownership
+
+FastAPI authenticates users with email/password registration and Argon2id
+hashing. Sessions use random opaque cookie values; only SHA-256 token hashes
+are persisted, with explicit expiration and revocation. State-changing
+requests require an Origin in the configured trusted-origin allowlist.
+
+`student_profiles`, `contacts`, and `outreach_drafts` carry non-null ownership
+foreign keys. Every protected query includes the current user predicate.
+Outreach creation additionally verifies that both the selected profile and
+contact belong to that user. Goals and skills inherit ownership from their
+profile.
+
+Migration `20260930_01` creates a disabled-password legacy user and backfills
+all existing root records before enforcing ownership constraints. Account
+exports omit credentials and session secrets; account deletion requires
+password confirmation and cascades owned data.

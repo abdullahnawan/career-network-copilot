@@ -20,6 +20,7 @@ class StudentProfile(Base):
     __tablename__ = "student_profiles"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     full_name: Mapped[str] = mapped_column(String(120), nullable=False)
     school: Mapped[str | None] = mapped_column(String(160))
     program: Mapped[str | None] = mapped_column(String(160))
@@ -100,6 +101,7 @@ class Contact(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     full_name: Mapped[str] = mapped_column(String(160), nullable=False)
     current_role: Mapped[str | None] = mapped_column(String(160))
     company: Mapped[str | None] = mapped_column(String(160))
@@ -135,6 +137,7 @@ class OutreachDraft(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     student_profile_id: Mapped[int] = mapped_column(
         ForeignKey("student_profiles.id", ondelete="CASCADE"), nullable=False
     )
@@ -160,3 +163,29 @@ class OutreachDraft(Base):
 
     student_profile: Mapped[StudentProfile] = relationship()
     contact: Mapped[Contact] = relationship()
+
+
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

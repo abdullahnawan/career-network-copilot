@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.auth import CurrentUser
 from app.db import get_db
 from app.matching import calculate_match
 from app.models import (
@@ -67,10 +68,10 @@ CSV_OPTIONAL_COLUMNS = {
 }
 
 
-def profile_query(profile_id: int):
+def profile_query(profile_id: int, owner_id: int):
     return (
         select(StudentProfile)
-        .where(StudentProfile.id == profile_id)
+        .where(StudentProfile.id == profile_id, StudentProfile.owner_id == owner_id)
         .options(
             selectinload(StudentProfile.career_goals),
             selectinload(StudentProfile.skills).selectinload(StudentSkill.skill),
@@ -78,8 +79,22 @@ def profile_query(profile_id: int):
     )
 
 
-def get_profile_or_404(db: Session, profile_id: int) -> StudentProfile:
-    profile = db.scalar(profile_query(profile_id))
+def get_profile_or_404(db: Session, profile_id: int, owner_id: int) -> StudentProfile:
+    profile = db.scalar(profile_query(profile_id, owner_id))
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Student profile not found")
+    return profile
+
+
+def get_current_profile_or_404(db: Session, owner_id: int) -> StudentProfile:
+    profile = db.scalar(
+        select(StudentProfile)
+        .where(StudentProfile.owner_id == owner_id)
+        .options(
+            selectinload(StudentProfile.career_goals),
+            selectinload(StudentProfile.skills).selectinload(StudentSkill.skill),
+        )
+    )
     if profile is None:
         raise HTTPException(status_code=404, detail="Student profile not found")
     return profile
@@ -96,33 +111,49 @@ def add_skills(db: Session, profile: StudentProfile, skills: list[SkillInput]) -
 
 
 @router.post("", response_model=StudentProfileResponse, status_code=status.HTTP_201_CREATED)
-def create_profile(payload: StudentProfileCreate, db: Session = Depends(get_db)):
-    profile = StudentProfile(**payload.model_dump(exclude={"career_goals", "skills"}))
+def create_profile(payload: StudentProfileCreate, user: CurrentUser, db: Session = Depends(get_db)):
+    if db.scalar(select(StudentProfile.id).where(StudentProfile.owner_id == user.id)) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="A student profile already exists for this account",
+        )
+    profile = StudentProfile(
+        owner_id=user.id, **payload.model_dump(exclude={"career_goals", "skills"})
+    )
     profile.career_goals = [CareerGoal(**goal.model_dump()) for goal in payload.career_goals]
     db.add(profile)
     db.flush()
     add_skills(db, profile, payload.skills)
     db.commit()
-    return get_profile_or_404(db, profile.id)
+    return get_profile_or_404(db, profile.id, user.id)
+
+
+@router.get("/me", response_model=StudentProfileResponse)
+def get_current_profile(user: CurrentUser, db: Session = Depends(get_db)):
+    return get_current_profile_or_404(db, user.id)
 
 
 @router.get("/{profile_id}", response_model=StudentProfileResponse)
-def get_profile(profile_id: int, db: Session = Depends(get_db)):
-    return get_profile_or_404(db, profile_id)
+def get_profile(profile_id: int, user: CurrentUser, db: Session = Depends(get_db)):
+    return get_profile_or_404(db, profile_id, user.id)
 
 
 @router.patch("/{profile_id}", response_model=StudentProfileResponse)
-def update_profile(profile_id: int, payload: StudentProfileUpdate, db: Session = Depends(get_db)):
-    profile = get_profile_or_404(db, profile_id)
+def update_profile(
+    profile_id: int, payload: StudentProfileUpdate, user: CurrentUser, db: Session = Depends(get_db)
+):
+    profile = get_profile_or_404(db, profile_id, user.id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(profile, field, value)
     db.commit()
-    return get_profile_or_404(db, profile_id)
+    return get_profile_or_404(db, profile_id, user.id)
 
 
 @router.post("/{profile_id}/career-goals", response_model=CareerGoalResponse, status_code=201)
-def create_goal(profile_id: int, payload: CareerGoalCreate, db: Session = Depends(get_db)):
-    profile = get_profile_or_404(db, profile_id)
+def create_goal(
+    profile_id: int, payload: CareerGoalCreate, user: CurrentUser, db: Session = Depends(get_db)
+):
+    profile = get_profile_or_404(db, profile_id, user.id)
     goal = CareerGoal(student_profile_id=profile.id, **payload.model_dump())
     db.add(goal)
     db.commit()
@@ -132,9 +163,13 @@ def create_goal(profile_id: int, payload: CareerGoalCreate, db: Session = Depend
 
 @router.patch("/{profile_id}/career-goals/{goal_id}", response_model=CareerGoalResponse)
 def update_goal(
-    profile_id: int, goal_id: int, payload: CareerGoalUpdate, db: Session = Depends(get_db)
+    profile_id: int,
+    goal_id: int,
+    payload: CareerGoalUpdate,
+    user: CurrentUser,
+    db: Session = Depends(get_db),
 ):
-    get_profile_or_404(db, profile_id)
+    get_profile_or_404(db, profile_id, user.id)
     goal = db.scalar(
         select(CareerGoal).where(
             CareerGoal.id == goal_id, CareerGoal.student_profile_id == profile_id
@@ -150,8 +185,8 @@ def update_goal(
 
 
 @router.delete("/{profile_id}/career-goals/{goal_id}", status_code=204)
-def delete_goal(profile_id: int, goal_id: int, db: Session = Depends(get_db)):
-    get_profile_or_404(db, profile_id)
+def delete_goal(profile_id: int, goal_id: int, user: CurrentUser, db: Session = Depends(get_db)):
+    get_profile_or_404(db, profile_id, user.id)
     goal = db.scalar(
         select(CareerGoal).where(
             CareerGoal.id == goal_id, CareerGoal.student_profile_id == profile_id
@@ -164,19 +199,23 @@ def delete_goal(profile_id: int, goal_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{profile_id}/skills", response_model=StudentProfileResponse)
-def replace_skills(profile_id: int, payload: SkillListRequest, db: Session = Depends(get_db)):
-    profile = get_profile_or_404(db, profile_id)
+def replace_skills(
+    profile_id: int, payload: SkillListRequest, user: CurrentUser, db: Session = Depends(get_db)
+):
+    profile = get_profile_or_404(db, profile_id, user.id)
     profile.skills.clear()
     db.flush()
     add_skills(db, profile, payload.skills)
     db.commit()
-    return get_profile_or_404(db, profile_id)
+    return get_profile_or_404(db, profile_id, user.id)
 
 
 @router.get("/{profile_id}/matches", response_model=list[ContactMatch])
-def get_matches(profile_id: int, db: Session = Depends(get_db)):
-    profile = get_profile_or_404(db, profile_id)
-    contacts = db.scalars(select(Contact).order_by(Contact.created_at.desc())).all()
+def get_matches(profile_id: int, user: CurrentUser, db: Session = Depends(get_db)):
+    profile = get_profile_or_404(db, profile_id, user.id)
+    contacts = db.scalars(
+        select(Contact).where(Contact.owner_id == user.id).order_by(Contact.created_at.desc())
+    ).all()
     matches = []
     for contact in contacts:
         total, breakdown, reasons = calculate_match(profile, contact)
@@ -191,16 +230,18 @@ def get_matches(profile_id: int, db: Session = Depends(get_db)):
     return sorted(matches, key=lambda item: (-item.total_score, item.contact.id))
 
 
-def contact_or_404(db: Session, contact_id: int) -> Contact:
-    contact = db.get(Contact, contact_id)
+def contact_or_404(db: Session, contact_id: int, owner_id: int) -> Contact:
+    contact = db.scalar(
+        select(Contact).where(Contact.id == contact_id, Contact.owner_id == owner_id)
+    )
     if contact is None:
         raise HTTPException(status_code=404, detail="Contact not found")
     return contact
 
 
 @contacts_router.post("", response_model=ContactResponse, status_code=status.HTTP_201_CREATED)
-def create_contact(payload: ContactCreate, db: Session = Depends(get_db)):
-    contact = Contact(**payload.model_dump())
+def create_contact(payload: ContactCreate, user: CurrentUser, db: Session = Depends(get_db)):
+    contact = Contact(owner_id=user.id, **payload.model_dump())
     db.add(contact)
     db.commit()
     db.refresh(contact)
@@ -209,6 +250,7 @@ def create_contact(payload: ContactCreate, db: Session = Depends(get_db)):
 
 @contacts_router.get("", response_model=ContactPage)
 def list_contacts(
+    user: CurrentUser,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     role: str | None = None,
@@ -243,7 +285,11 @@ def list_contacts(
                 Contact.notes.ilike(term),
             )
         )
-    query = select(Contact).where(*filters).order_by(Contact.created_at.desc())
+    query = (
+        select(Contact)
+        .where(Contact.owner_id == user.id, *filters)
+        .order_by(Contact.created_at.desc())
+    )
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     contacts = db.scalars(query.offset((page - 1) * page_size).limit(page_size)).all()
     return ContactPage(items=contacts, page=page, page_size=page_size, total=total)
@@ -251,6 +297,7 @@ def list_contacts(
 
 @contacts_router.post("/import-csv", response_model=CsvImportSummary)
 async def import_contacts_csv(
+    user: CurrentUser,
     file: Annotated[UploadFile, File(description="CSV with fictional or user-authorized contacts")],
     db: Session = Depends(get_db),
 ):
@@ -324,20 +371,22 @@ async def import_contacts_csv(
         except ValueError as error:
             errors.append(CsvImportError(row=row_number, message=str(error)))
             continue
-        db.add(Contact(**contact.model_dump()))
+        db.add(Contact(owner_id=user.id, **contact.model_dump()))
         created += 1
     db.commit()
     return CsvImportSummary(created=created, errors=errors)
 
 
 @contacts_router.get("/{contact_id}", response_model=ContactResponse)
-def get_contact(contact_id: int, db: Session = Depends(get_db)):
-    return contact_or_404(db, contact_id)
+def get_contact(contact_id: int, user: CurrentUser, db: Session = Depends(get_db)):
+    return contact_or_404(db, contact_id, user.id)
 
 
 @contacts_router.patch("/{contact_id}", response_model=ContactResponse)
-def update_contact(contact_id: int, payload: ContactUpdate, db: Session = Depends(get_db)):
-    contact = contact_or_404(db, contact_id)
+def update_contact(
+    contact_id: int, payload: ContactUpdate, user: CurrentUser, db: Session = Depends(get_db)
+):
+    contact = contact_or_404(db, contact_id, user.id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(contact, field, value)
     db.commit()
@@ -346,14 +395,18 @@ def update_contact(contact_id: int, payload: ContactUpdate, db: Session = Depend
 
 
 @contacts_router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_contact(contact_id: int, db: Session = Depends(get_db)):
-    contact = contact_or_404(db, contact_id)
+def delete_contact(contact_id: int, user: CurrentUser, db: Session = Depends(get_db)):
+    contact = contact_or_404(db, contact_id, user.id)
     db.delete(contact)
     db.commit()
 
 
-def draft_or_404(db: Session, draft_id: int) -> OutreachDraft:
-    draft = db.get(OutreachDraft, draft_id)
+def draft_or_404(db: Session, draft_id: int, owner_id: int) -> OutreachDraft:
+    draft = db.scalar(
+        select(OutreachDraft).where(
+            OutreachDraft.id == draft_id, OutreachDraft.owner_id == owner_id
+        )
+    )
     if draft is None:
         raise HTTPException(status_code=404, detail="Outreach draft not found")
     return draft
@@ -398,10 +451,24 @@ def transition(draft: OutreachDraft, target: OutreachDraftStatus) -> None:
 
 
 @outreach_router.post("", response_model=OutreachDraftResponse, status_code=201)
-def create_outreach_draft(payload: OutreachDraftCreate, db: Session = Depends(get_db)):
-    if db.get(StudentProfile, payload.student_profile_id) is None:
+def create_outreach_draft(
+    payload: OutreachDraftCreate, user: CurrentUser, db: Session = Depends(get_db)
+):
+    if (
+        db.scalar(
+            select(StudentProfile).where(
+                StudentProfile.id == payload.student_profile_id, StudentProfile.owner_id == user.id
+            )
+        )
+        is None
+    ):
         raise HTTPException(status_code=404, detail="Student profile not found")
-    if db.get(Contact, payload.contact_id) is None:
+    if (
+        db.scalar(
+            select(Contact).where(Contact.id == payload.contact_id, Contact.owner_id == user.id)
+        )
+        is None
+    ):
         raise HTTPException(status_code=404, detail="Contact not found")
     if (
         payload.channel == "linkedin_connection_note"
@@ -411,7 +478,7 @@ def create_outreach_draft(payload: OutreachDraftCreate, db: Session = Depends(ge
             status_code=422,
             detail="linkedin_connection_note messages must be 300 characters or fewer",
         )
-    draft = OutreachDraft(**payload.model_dump())
+    draft = OutreachDraft(owner_id=user.id, **payload.model_dump())
     db.add(draft)
     db.commit()
     db.refresh(draft)
@@ -420,6 +487,7 @@ def create_outreach_draft(payload: OutreachDraftCreate, db: Session = Depends(ge
 
 @outreach_router.get("", response_model=OutreachDraftPage)
 def list_outreach_drafts(
+    user: CurrentUser,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     status_filter: OutreachDraftStatusSchema | None = Query(default=None, alias="status"),
@@ -429,7 +497,7 @@ def list_outreach_drafts(
     contact_id: int | None = Query(default=None, gt=0),
     db: Session = Depends(get_db),
 ):
-    query = select(OutreachDraft)
+    query = select(OutreachDraft).where(OutreachDraft.owner_id == user.id)
     if status_filter:
         query = query.where(OutreachDraft.status == status_filter.value)
     if student_profile_id:
@@ -449,10 +517,15 @@ def list_outreach_drafts(
 @outreach_router.get("/activity-summary", response_model=OutreachActivitySummary)
 @outreach_router.get("/activity", response_model=OutreachActivitySummary, include_in_schema=False)
 def outreach_activity_summary(
+    user: CurrentUser,
     student_profile_id: int | None = Query(default=None, gt=0),
     db: Session = Depends(get_db),
 ):
-    query = select(OutreachDraft.status, func.count()).group_by(OutreachDraft.status)
+    query = (
+        select(OutreachDraft.status, func.count())
+        .where(OutreachDraft.owner_id == user.id)
+        .group_by(OutreachDraft.status)
+    )
     if student_profile_id:
         query = query.where(OutreachDraft.student_profile_id == student_profile_id)
     counts = {status.value: 0 for status in OutreachDraftStatus}
@@ -466,6 +539,7 @@ def outreach_activity_summary(
 @outreach_router.post("/suggest", response_model=OutreachSuggestion)
 @outreach_router.post("/suggestion", response_model=OutreachSuggestion, include_in_schema=False)
 def suggest_outreach(
+    user: CurrentUser,
     student_profile_id: int = Query(gt=0),
     contact_id: int = Query(gt=0),
     purpose: str = Query(...),
@@ -473,11 +547,14 @@ def suggest_outreach(
     tone: str = Query(...),
     db: Session = Depends(get_db),
 ):
-    profile = get_profile_or_404(db, student_profile_id)
-    contact = contact_or_404(db, contact_id)
+    profile = get_profile_or_404(db, student_profile_id, user.id)
+    contact = contact_or_404(db, contact_id, user.id)
     allowed_purposes = {
-        "informational_interview", "career_advice", "project_collaboration",
-        "internship_question", "general_networking",
+        "informational_interview",
+        "career_advice",
+        "project_collaboration",
+        "internship_question",
+        "general_networking",
     }
     allowed_channels = {"linkedin_connection_note", "linkedin_message", "email", "other"}
     allowed_tones = {"professional", "warm", "concise"}
@@ -487,9 +564,7 @@ def suggest_outreach(
         or tone not in allowed_tones
     ):
         raise HTTPException(status_code=422, detail="Invalid purpose, channel, or tone")
-    subject, message, facts_used = generate_suggestion(
-        profile, contact, purpose, channel, tone
-    )
+    subject, message, facts_used = generate_suggestion(profile, contact, purpose, channel, tone)
     return OutreachSuggestion(
         student_profile_id=student_profile_id,
         contact_id=contact_id,
@@ -500,22 +575,20 @@ def suggest_outreach(
         message=message,
         facts_used=facts_used,
         character_count=len(message),
-        connection_note_limit=(
-            300 if channel == "linkedin_connection_note" else None
-        ),
+        connection_note_limit=(300 if channel == "linkedin_connection_note" else None),
     )
 
 
 @outreach_router.get("/{draft_id}", response_model=OutreachDraftResponse)
-def get_outreach_draft(draft_id: int, db: Session = Depends(get_db)):
-    return draft_or_404(db, draft_id)
+def get_outreach_draft(draft_id: int, user: CurrentUser, db: Session = Depends(get_db)):
+    return draft_or_404(db, draft_id, user.id)
 
 
 @outreach_router.patch("/{draft_id}", response_model=OutreachDraftResponse)
 def update_outreach_draft(
-    draft_id: int, payload: OutreachDraftUpdate, db: Session = Depends(get_db)
+    draft_id: int, payload: OutreachDraftUpdate, user: CurrentUser, db: Session = Depends(get_db)
 ):
-    draft = draft_or_404(db, draft_id)
+    draft = draft_or_404(db, draft_id, user.id)
     values = payload.model_dump(exclude_unset=True)
     effective_channel = values.get("channel", draft.channel)
     effective_message = values.get("message", draft.message)
@@ -535,8 +608,8 @@ def update_outreach_draft(
 
 
 @outreach_router.delete("/{draft_id}", status_code=204)
-def delete_outreach_draft(draft_id: int, db: Session = Depends(get_db)):
-    draft = draft_or_404(db, draft_id)
+def delete_outreach_draft(draft_id: int, user: CurrentUser, db: Session = Depends(get_db)):
+    draft = draft_or_404(db, draft_id, user.id)
     if draft.status != OutreachDraftStatus.DRAFT.value:
         raise HTTPException(status_code=409, detail="Only draft outreach messages can be deleted")
     db.delete(draft)
@@ -544,8 +617,8 @@ def delete_outreach_draft(draft_id: int, db: Session = Depends(get_db)):
 
 
 def make_action(target: OutreachDraftStatus):
-    def action(draft_id: int, db: Session = Depends(get_db)):
-        draft = draft_or_404(db, draft_id)
+    def action(draft_id: int, user: CurrentUser, db: Session = Depends(get_db)):
+        draft = draft_or_404(db, draft_id, user.id)
         transition(draft, target)
         db.commit()
         db.refresh(draft)

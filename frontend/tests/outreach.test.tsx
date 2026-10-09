@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import OutreachPage from "../app/outreach/page";
 
+vi.mock("../components/AuthProvider", () => ({
+  useAuth: () => ({ profile: { id: 1 }, loading: false, user: { id: 1, email: "demo@example.com" } }),
+}));
+
 const contacts = { items: [{ id: 2, full_name: "Fictional Contact" }], page: 1, page_size: 100, total: 1 };
 const suggestion = {
   student_profile_id: 1, contact_id: 2, purpose: "career_advice", channel: "linkedin_message",
@@ -20,7 +24,6 @@ describe("outreach workspace", () => {
       .mockResolvedValue(new Response(JSON.stringify({ items: [], page: 1, page_size: 50, total: 0 })));
     render(<OutreachPage />);
     await waitFor(() => expect(screen.getByText("Fictional Contact")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText(/Student profile ID/), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Contact"), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate suggestion" }));
     expect(await screen.findByText("Facts used")).toBeInTheDocument();
@@ -50,7 +53,6 @@ describe("outreach workspace", () => {
       })));
     render(<OutreachPage />);
     await waitFor(() => expect(screen.getByText("Fictional Contact")).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText(/Student profile ID/), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Contact"), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText("Channel"), { target: { value: "linkedin_connection_note" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate suggestion" }));
